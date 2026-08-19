@@ -13,7 +13,7 @@ function formatDate(iso: string): string {
   });
 }
 
-export default function RecentLettersTable({ letters }: Props) {
+export function RecentLettersTable({ letters }: Props) {
   const navigate = useNavigate();
 
   if (letters.length === 0) {

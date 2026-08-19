@@ -1,14 +1,9 @@
 // src/routes/dashboard/index.tsx
 import { useNavigate } from 'react-router';
 import { Plus } from 'lucide-react';
-import { useDashboardStats } from '../../hooks/useDashboardStats'
-import StatCard from '../../components/dashboard/StatCard';
-import RecentLettersTable from '../../components/dashboard/RecentLettersTable';
-import TemplateCard from '../../components/dashboard/TemplateCard';
-import SectionHeader from '../../components/ui/SectionHeader';
-import PageLoader from '../../components/ui/PageLoader';
-import ErrorAlert from '../../components/ui/ErrorAlert';
-import ScreenHeader from '~/components/ui/ScreenHeader';
+import { useDashboardStats } from '~/hooks/useDashboardStats'
+import { StatCard, TemplateCard, RecentLettersTable } from '~/components/dashboard/';
+import { SectionHeader, PageLoader, ErrorAlert, ScreenHeader, GreenButton } from '~/components/ui/';
 
 function formatToday(): string {
   return new Date().toLocaleDateString('id-ID', {
@@ -28,13 +23,10 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <ScreenHeader title="Dashboard" description={formatToday()} />
-        <button
-          onClick={() => navigate('/dashboard/templates')}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-xl hover:bg-emerald-700 transition-colors"
-        >
+        <GreenButton onClick={() => navigate('/dashboard/templates')} >
           <Plus size={15} />
           Buat surat baru
-        </button>
+        </GreenButton>
       </div>
 
       {/* Error */}
@@ -81,7 +73,7 @@ export default function DashboardPage() {
         <SectionHeader
           title="Template tersedia"
           linkLabel="Kelola template"
-          linkTo="/templates"
+          linkTo="/dashboard/templates"
         />
         {templates.length === 0 ? (
           <p className="text-sm text-gray-400">Belum ada template. Hubungi admin.</p>

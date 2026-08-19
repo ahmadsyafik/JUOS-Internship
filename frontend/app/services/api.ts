@@ -37,6 +37,7 @@ export const letterService = {
   getAll:    (params?: { status?: string }) => api.get('/letters', { params }),
   getById:   (id: number)                   => api.get(`/letters/${id}`),
   create:    (data: Record<string, any>)    => api.post('/letters', data),
+  update:    (id: number, data: Record<string, any>) => api.put(`/letters/${id}`, data),
   approve:   (id: number, catatan?: string) => api.patch(`/letters/${id}/approve`, { catatan }),
   reject: (id: number, catatan: string) => api.patch(`/letters/${id}/reject`, { catatan }),
   revise: (id: number, catatan: string) => api.patch(`/letters/${id}/revise`, { catatan }),

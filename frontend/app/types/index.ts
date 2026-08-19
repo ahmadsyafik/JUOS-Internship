@@ -43,7 +43,7 @@ export interface Approval {
   id: number;
   letter_id: number;
   reviewed_by: number;
-  status: 'approved' | 'rejected';
+  status: 'approved' | 'rejected' | 'revision';
   catatan?: string;
   reviewed_at: string;
   reviewer?: User;

@@ -1,5 +1,4 @@
-import Base from "~/components/ui/Base";
-import ScreenHeader from "~/components/ui/ScreenHeader";
+import { Base, ScreenHeader } from "~/components/ui";
 
 export default function BAA() {
     return (

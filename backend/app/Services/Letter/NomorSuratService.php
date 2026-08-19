@@ -4,7 +4,6 @@ namespace App\Services\Letter;
 
 use App\Models\NomorSuratCounter;
 use Illuminate\Support\Facades\DB;
-
 class NomorSuratService
 {
     public function generate(string $jenisSurat): string
@@ -27,7 +26,7 @@ class NomorSuratService
             $nomorUrut   = str_pad($counter->counter, 3, '0', STR_PAD_LEFT);
             $bulanRomawi = $this->toRomawi($bulan);
 
-            return "{$nomorUrut}/{$jenisSurat}/{$bulanRomawi}/{$tahun}";
+            return "{$jenisSurat}/JUOS/{$bulanRomawi}/{$tahun}/{$nomorUrut}";
         });
     }
 

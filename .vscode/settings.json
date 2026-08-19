@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd c:\\\\Users\\\\dimas\\\\VSCODE\\\\JUOS-Internship\\\\backend; php -l app/Http/Controllers/TemplateController\\.php; php artisan test --filter=LetterApprovalTest --filter=LettersPendingFilterTest$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

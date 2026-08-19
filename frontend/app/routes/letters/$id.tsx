@@ -6,14 +6,15 @@ import {
 } from 'lucide-react';
 import { letterService } from '../../services/api';
 import type { Letter } from '../../types';
-import Base from '~/components/ui/Base';
+import { Base } from '~/components/ui';
 
 function statusBadge(status: string) {
   const map: Record<string, { label: string; className: string }> = {
     pending_approval: { label: 'Menunggu Persetujuan', className: 'bg-amber-100 text-amber-700' },
-    approved:         { label: 'Disetujui',             className: 'bg-emerald-100 text-emerald-700' },
-    rejected:         { label: 'Ditolak / Perlu Revisi', className: 'bg-red-100 text-red-600' },
-    draft:            { label: 'Draft',                  className: 'bg-gray-100 text-gray-600' },
+    approved: { label: 'Disetujui', className: 'bg-emerald-100 text-emerald-700' },
+    revision_required: { label: 'Perlu Revisi', className: 'bg-amber-500 text-white' },
+    rejected: { label: 'Ditolak', className: 'bg-red-100 text-red-600' },
+    draft: { label: 'Draft', className: 'bg-gray-100 text-gray-600' },
   };
   const s = map[status] ?? { label: status, className: 'bg-gray-100 text-gray-500' };
   return <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${s.className}`}>{s.label}</span>;
@@ -26,22 +27,20 @@ function ApprovalStep({
 }) {
   return (
     <div className="flex items-start gap-3">
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${
-        status === 'done' ? 'bg-emerald-500 text-white' :
+      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5 ${status === 'done' ? 'bg-emerald-500 text-white' :
         status === 'current' ? 'bg-amber-400 text-white' :
-        'bg-gray-100 text-gray-400'
-      }`}>
+          'bg-gray-100 text-gray-400'
+        }`}>
         {status === 'done' ? <CheckCircle2 size={14} /> : n}
       </div>
       <div>
         <p className={`text-sm font-medium ${status === 'pending' ? 'text-gray-400' : 'text-gray-700'}`}>{title}</p>
         {name && <p className="text-xs text-gray-500 mt-0.5">{name}</p>}
         {sub && <p className="text-xs text-gray-400">{sub}</p>}
-        <p className={`text-xs mt-0.5 ${
-          status === 'done' ? 'text-emerald-500' :
+        <p className={`text-xs mt-0.5 ${status === 'done' ? 'text-emerald-500' :
           status === 'current' ? 'text-amber-500' :
-          'text-gray-300'
-        }`}>
+            'text-gray-300'
+          }`}>
           {status === 'done' ? 'Selesai' : status === 'current' ? 'Menunggu tindakan' : 'Belum dimulai'}
         </p>
       </div>
@@ -50,12 +49,12 @@ function ApprovalStep({
 }
 
 export default function LetterDetailPage() {
-  const { id }   = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [letter, setLetter]         = useState<Letter | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
+  const [letter, setLetter] = useState<Letter | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [exportError, setExportError] = useState('');
 
   const pdfViewUrl = id ? `/api/letters/${id}/pdf-view#toolbar=0&navpanes=0` : null;
@@ -68,9 +67,9 @@ export default function LetterDetailPage() {
         const status = err?.response?.status;
         setError(
           status === 401 ? 'Akses tidak sah. Silakan login ulang.' :
-          status === 403 ? 'Anda tidak memiliki izin melihat surat ini.' :
-          status === 404 ? 'Surat tidak ditemukan.' :
-          'Gagal memuat detail surat.'
+            status === 403 ? 'Anda tidak memiliki izin melihat surat ini.' :
+              status === 404 ? 'Surat tidak ditemukan.' :
+                'Gagal memuat detail surat.'
         );
       })
       .finally(() => setLoading(false));
@@ -126,6 +125,7 @@ export default function LetterDetailPage() {
 
   const isApproved = letter.status === 'approved';
   const isRejected = letter.status === 'rejected';
+  const isRevision = letter.status === 'revision';
 
   const approvalStatus = (idx: number): 'done' | 'current' | 'pending' => {
     if (isApproved) return 'done';
@@ -151,10 +151,10 @@ export default function LetterDetailPage() {
         <div className="flex items-center gap-2 flex-wrap">
 
           {/* Bug 1 fix: tombol Edit Surat jika status rejected */}
-          {isRejected && (
+          {isRevision && (
             <button
               onClick={() => navigate(
-                `/letters/create/mou2?template_id=${letter.template_id}&letter_id=${letter.id}`
+                `/letters/create/mou?template_id=${letter.template_id}&letter_id=${letter.id}`
               )}
               className="flex items-center gap-1.5 px-3 py-2 text-sm bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors"
             >
@@ -206,12 +206,12 @@ export default function LetterDetailPage() {
       )}
 
       {/* Catatan revisi jika rejected */}
-      {isRejected && letter.latestApproval?.catatan && (
+      {!isApproved && letter.latest_approval?.catatan && (
         <div className="mb-5 flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <div>
             <p className="font-medium mb-0.5">Catatan dari Reviewer:</p>
-            <p>{letter.latestApproval.catatan}</p>
+            <p>{letter.latest_approval.catatan}</p>
           </div>
         </div>
       )}
@@ -267,8 +267,8 @@ export default function LetterDetailPage() {
                 <span className="text-xs text-gray-700">
                   {letter.created_at
                     ? new Date(letter.created_at).toLocaleDateString('id-ID', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })
+                      day: 'numeric', month: 'short', year: 'numeric',
+                    })
                     : '—'}
                 </span>
               </div>
@@ -296,7 +296,7 @@ export default function LetterDetailPage() {
             <div className="space-y-4">
               {[
                 { title: 'Admin Tata Usaha', name: letter.creator?.nama },
-                { title: 'Kepala Departemen', name: letter.latestApproval?.reviewer?.nama },
+                { title: 'Kepala Departemen', name: letter.latest_approval?.reviewer?.nama },
                 { title: 'Direktur' },
               ].map((s, i) => (
                 <ApprovalStep

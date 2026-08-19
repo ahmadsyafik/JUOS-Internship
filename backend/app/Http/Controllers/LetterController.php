@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\DTO\StoreLetterDTO;
 use App\Models\Letter;
 use App\Services\Letter\DocxGeneratorService;
+use App\Services\Letter\LetterValidatorService;
 use App\Services\Letter\PdfConverterService;
 use App\Services\Letter\StoreLetterService;
 use Illuminate\Http\JsonResponse;
@@ -28,7 +29,8 @@ class LetterController extends Controller
             ->orderBy('created_at', 'desc');
 
         if ($status) {
-            $query->where('status', $status);
+            $statusValue = $status === 'pending' ? 'pending_approval' : $status;
+            $query->where('status', $statusValue);
         }
 
         return response()->json([
@@ -68,6 +70,105 @@ class LetterController extends Controller
             'success' => true,
             'data'    => $letter->load(['template', 'creator', 'latestApproval.reviewer']),
         ]);
+    }
+
+    /**
+     * PUT /api/letters/{letter}
+     * PUT /api/letters (legacy id in body)
+     */
+    public function update(Request $request, ?Letter $letter = null): JsonResponse
+    {
+        try {
+            $letter = $letter ?? Letter::find($request->input('id'));
+
+            if (!$letter) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Surat tidak ditemukan.',
+                ], 404);
+            }
+
+            $request->validate([
+                'template_id' => 'sometimes|nullable|exists:templates,id',
+                'nomor_surat' => 'sometimes|nullable|string|max:100',
+                'data_surat' => 'sometimes|array',
+                'status' => 'sometimes|nullable|string|in:draft,pending_approval,revision,approved,rejected',
+                'catatan_reject' => 'sometimes|nullable|string|max:1000',
+            ]);
+
+            $data = [];
+            if ($request->has('template_id')) {
+                $data['template_id'] = $request->input('template_id');
+            }
+            if ($request->has('nomor_surat')) {
+                $data['nomor_surat'] = $request->input('nomor_surat');
+            }
+            if ($request->has('status')) {
+                $data['status'] = $request->input('status');
+            }
+            if ($request->has('catatan_reject')) {
+                $data['catatan_reject'] = $request->input('catatan_reject');
+            }
+
+            $templateId = $request->input('template_id', $letter->template_id);
+            $dataSurat = $request->input('data_surat', $letter->data_surat ?? []);
+
+            if (is_string($dataSurat)) {
+                $decoded = json_decode($dataSurat, true);
+                $dataSurat = json_last_error() === JSON_ERROR_NONE && is_array($decoded) ? $decoded : [];
+            }
+
+            $shouldRegenerateDocx = $request->has('template_id') || $request->has('data_surat');
+
+            if ($request->has('data_surat')) {
+                $data['data_surat'] = $dataSurat;
+            }
+
+            if ($shouldRegenerateDocx) {
+                $template = \App\Models\Template::findOrFail($templateId);
+                app(LetterValidatorService::class)->validate($template, $dataSurat);
+
+                if ($letter->path_docx && Storage::disk('public')->exists($letter->path_docx)) {
+                    Storage::disk('public')->delete($letter->path_docx);
+                }
+                if ($letter->path_pdf && Storage::disk('public')->exists($letter->path_pdf)) {
+                    Storage::disk('public')->delete($letter->path_pdf);
+                }
+
+                $data['path_docx'] = app(DocxGeneratorService::class)->generate($template, $dataSurat);
+                $data['path_pdf'] = null;
+            }
+
+            $letter->update($data);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Surat berhasil diperbarui.',
+                'data'    => $letter->fresh()->load(['template', 'creator', 'latestApproval.reviewer']),
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Update letter failed', [
+                'letter_id' => $letter?->id,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat memperbarui surat.',
+            ], 500);
+        }
     }
 
     /**
@@ -275,7 +376,10 @@ public function reject(Request $request, Letter $letter): JsonResponse
             'reviewed_at' => now(),
         ]);
 
-        $letter->update(['status' => 'rejected']);
+        $letter->update([
+            'status' => 'rejected',
+            'catatan_reject' => $request->input('catatan'),
+        ]);
 
         return response()->json([
             'success' => true,
@@ -315,13 +419,13 @@ public function revise(Request $request, Letter $letter): JsonResponse
         \App\Models\Approval::create([
             'letter_id'   => $letter->id,
             'reviewed_by' => $user->id,
-            'status'      => 'rejected',
+            'status'      => 'revision',
             'catatan'     => '[MINTA REVISI] ' . $request->input('catatan'),
             'reviewed_at' => now(),
         ]);
 
         // Status kembali ke rejected — pembuat bisa edit dan kirim ulang
-        $letter->update(['status' => 'rejected']);
+        $letter->update(['status' => 'revision']);
 
         return response()->json([
             'success' => true,

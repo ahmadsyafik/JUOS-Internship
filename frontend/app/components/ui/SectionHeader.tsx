@@ -7,8 +7,10 @@ interface Props {
   linkTo?: string;
 }
 
-export default function SectionHeader({ title, linkLabel, linkTo }: Props) {
+export function SectionHeader({ title, linkLabel, linkTo }: Props) {
   const navigate = useNavigate();
+
+  console.log("SectionHeader rendered with linkTo:", linkTo);
 
   return (
     <div className="flex items-center justify-between mb-3">

@@ -2,21 +2,23 @@
 import { useNavigate } from 'react-router';
 import { Upload, X, FileText, ChevronLeft, Loader2 } from 'lucide-react';
 import api, { templateService } from '../../../services/api';
+import { ChevronButton, GreenButton } from '~/components/ui';
+import { WhiteButton } from '~/components/ui/WhiteButton';
 
 const JENIS_OPTIONS = ['BAA', 'SPK', 'MOU', 'KONTRAK'];
 
 export default function NewTemplatePage() {
   const navigate = useNavigate();
-  const fileRef  = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const [nama, setNama]             = useState('');
+  const [nama, setNama] = useState('');
   const [jenisSurat, setJenisSurat] = useState('');
-  const [file, setFile]             = useState<File | null>(null);
-  const [docxVars, setDocxVars]     = useState<string[]>([]);
+  const [file, setFile] = useState<File | null>(null);
+  const [docxVars, setDocxVars] = useState<string[]>([]);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-  const [reading, setReading]       = useState(false);
+  const [reading, setReading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError]           = useState('');
+  const [error, setError] = useState('');
 
   // Bug 4: upload ke backend → LibreOffice convert → PDF URL + variabel
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,8 +63,8 @@ export default function NewTemplatePage() {
 
   const handleSubmit = async () => {
     if (!nama.trim()) { setError('Nama template wajib diisi.'); return; }
-    if (!jenisSurat)  { setError('Kategori wajib dipilih.'); return; }
-    if (!file)        { setError('File DOCX wajib diupload.'); return; }
+    if (!jenisSurat) { setError('Kategori wajib dipilih.'); return; }
+    if (!file) { setError('File DOCX wajib diupload.'); return; }
 
     setSubmitting(true);
     setError('');
@@ -87,20 +89,21 @@ export default function NewTemplatePage() {
 
       {/* ─── Kiri: Form ─── */}
       <div className="flex-1 p-8">
-        <button onClick={() => navigate('/dashboard/templates')} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 mb-6 transition-colors">
+        <ChevronButton onClick={() => navigate('/dashboard/templates')}>
           <ChevronLeft size={13} /> Kembali ke Template
-        </button>
-
+        </ChevronButton>
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-xl font-semibold text-gray-800">Tambah Template</h1>
             <p className="text-xs text-gray-400 mt-1">Dashboard › Template › Tambah Template</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => navigate('/dashboard/templates')} className="px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50">Batal</button>
-            <button onClick={handleSubmit} disabled={submitting || reading} className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-60">
-              {submitting ? 'Menyimpan...' : 'Simpan Template'}
-            </button>
+            <WhiteButton onClick={() => navigate('/dashboard/templates')}>
+              Batal
+            </WhiteButton>
+            <GreenButton onClick={handleSubmit} disabled={submitting || reading}>
+              {submitting ? 'Menyimpan' : 'Simpan Template'}
+            </GreenButton>
           </div>
         </div>
 

@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Upload, X, ImageIcon, Check, Loader2, AlertCircle } from 'lucide-react';
 import { userService } from '../../services/api';
-import Base from '~/components/ui/Base';
-import ScreenHeader from '~/components/ui/ScreenHeader';
+import {Base, ScreenHeader} from '~/components/ui';
 
 export default function SignaturePage() {
   const fileRef = useRef<HTMLInputElement>(null);

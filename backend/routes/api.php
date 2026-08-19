@@ -28,6 +28,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/letters/{letter}', [LetterController::class, 'show']);
     Route::get('/letters/{letter}/export', [LetterController::class, 'export']);
     Route::post('/letters', [LetterController::class, 'store']);
+    Route::put('/letters', [LetterController::class, 'update']);
+    Route::put('/letters/{letter}', [LetterController::class, 'update']);
     Route::patch('/letters/{letter}/approve', [LetterController::class, 'approve']);
     Route::patch('/letters/{letter}/reject', [LetterController::class, 'reject']);
     Route::patch('/letters/{letter}/revise', [LetterController::class, 'revise']);

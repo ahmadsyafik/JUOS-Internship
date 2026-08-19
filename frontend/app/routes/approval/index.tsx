@@ -14,8 +14,7 @@ import {
 } from 'lucide-react';
 import { letterService, userService } from '../../services/api';
 import type { Letter } from '../../types';
-import ScreenHeader from '~/components/ui/ScreenHeader';
-import Base from '~/components/ui/Base';
+import { ScreenHeader, Base } from '~/components/ui/';
 
 const FILTERS = ['Semua', 'Hari Ini', 'Minggu Ini'] as const;
 
@@ -65,11 +64,13 @@ function ApprovalModal({
   mode,
   onClose,
   onDone,
+  onSuccess
 }: {
   letter: Letter;
   mode: ModalMode;
   onClose: () => void;
   onDone: () => void;
+  onSuccess: () => void;
 }) {
   const [catatan, setCatatan] = useState('');
   const [loading, setLoading] = useState(false);
@@ -181,13 +182,15 @@ function ApprovalModal({
     setError('');
     try {
       if (rejectAction === 'revision') {
-    await letterService.revise(letter.id, catatan);
-  } else {
-    await letterService.reject(letter.id, catatan);
-  }
+        await letterService.revise(letter.id, catatan);
+      } else {
+        await letterService.reject(letter.id, catatan);
+      }
     } catch {
       setError('Gagal mengirim keputusan. Coba lagi.');
     } finally {
+      onClose();
+      onSuccess();
       setLoading(false);
     }
   };
@@ -214,9 +217,8 @@ function ApprovalModal({
         <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white ${
-                isReject ? 'bg-red-500' : 'bg-emerald-500'
-              }`}
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white ${isReject ? 'bg-red-500' : 'bg-emerald-500'
+                }`}
             >
               {isReject ? <XCircle size={22} /> : <FileText size={22} />}
             </div>
@@ -261,11 +263,10 @@ function ApprovalModal({
                 <button
                   type="button"
                   onClick={() => setRejectAction('revision')}
-                  className={`rounded-[24px] border px-4 py-5 text-left transition ${
-                    rejectAction === 'revision'
-                      ? 'border-amber-300 bg-amber-50 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
+                  className={`rounded-3xl border px-4 py-5 text-left transition ${rejectAction === 'revision'
+                    ? 'border-amber-300 bg-amber-50 shadow-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
                 >
                   <div className="flex items-center gap-2 mb-3 text-amber-700">
                     <RotateCcw size={18} />
@@ -277,11 +278,10 @@ function ApprovalModal({
                 <button
                   type="button"
                   onClick={() => setRejectAction('permanent')}
-                  className={`rounded-[24px] border px-4 py-5 text-left transition ${
-                    rejectAction === 'permanent'
-                      ? 'border-red-300 bg-red-50 shadow-sm'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
+                  className={`rounded-[24px] border px-4 py-5 text-left transition ${rejectAction === 'permanent'
+                    ? 'border-red-300 bg-red-50 shadow-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
                 >
                   <div className="flex items-center gap-2 mb-3 text-red-600">
                     <XCircle size={18} />
@@ -297,22 +297,20 @@ function ApprovalModal({
                 <button
                   type="button"
                   onClick={() => setActiveTab('gambar')}
-                  className={`rounded-[20px] py-3 text-sm font-semibold transition ${
-                    activeTab === 'gambar'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  className={`rounded-[20px] py-3 text-sm font-semibold transition ${activeTab === 'gambar'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                    }`}
                 >
                   Gambar TTD
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('upload')}
-                  className={`rounded-[20px] py-3 text-sm font-semibold transition ${
-                    activeTab === 'upload'
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  className={`rounded-[20px] py-3 text-sm font-semibold transition ${activeTab === 'upload'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                    }`}
                 >
                   Upload Gambar
                 </button>
@@ -441,9 +439,8 @@ function ApprovalModal({
                     : 'Jelaskan alasan penolakan...'
                   : 'Tambahkan catatan jika diperlukan...'
               }
-              className={`w-full min-h-[110px] rounded-3xl border px-4 py-3 text-sm text-slate-700 focus:ring-2 resize-none placeholder:text-slate-300 ${
-                error ? 'border-red-200 bg-red-50 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-emerald-100'
-              }`}
+              className={`w-full min-h-[110px] rounded-3xl border px-4 py-3 text-sm text-slate-700 focus:ring-2 resize-none placeholder:text-slate-300 ${error ? 'border-red-200 bg-red-50 focus:border-red-400 focus:ring-red-100' : 'border-slate-200 bg-white focus:border-emerald-500 focus:ring-emerald-100'
+                }`}
             />
           </div>
 
@@ -466,9 +463,8 @@ function ApprovalModal({
           <button
             onClick={isReject ? handleReject : handleApprove}
             disabled={loading || (!isReject && ((activeTab === 'gambar' && !currentSignatureUrl && !signatureLoading) || (activeTab === 'upload' && !selectedFile)))}
-            className={`w-full rounded-3xl px-4 py-3 text-sm font-semibold text-white transition ${
-              isReject ? primaryButtonClass : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300'
-            }`}
+            className={`w-full rounded-3xl px-4 py-3 text-sm font-semibold text-white transition ${isReject ? primaryButtonClass : 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300'
+              }`}
           >
             {loading ? (
               <Loader2 size={16} className="animate-spin" />
@@ -553,11 +549,10 @@ export default function ApprovalPage() {
                   key={filter}
                   type="button"
                   onClick={() => setActiveFilter(filter)}
-                  className={`rounded-full px-4 py-2 text-sm transition ${
-                    activeFilter === filter
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`rounded-full px-4 py-2 text-sm transition ${activeFilter === filter
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   {filter}
                 </button>
@@ -686,6 +681,7 @@ export default function ApprovalPage() {
             setModalMode(null);
             navigate('/letters');
           }}
+          onSuccess={fetchPending}
         />
       )}
     </Base>

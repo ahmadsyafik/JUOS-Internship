@@ -1,4 +1,4 @@
-export default function GreenButton({ children, onClick, disabled }: { children: React.ReactNode, onClick?: () => void, disabled?: boolean }) {
+export function GreenButton({ children, onClick, disabled }: { children: React.ReactNode, onClick?: () => void, disabled?: boolean }) {
     return (
         <button
             onClick={onClick}

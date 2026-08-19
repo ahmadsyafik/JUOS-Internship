@@ -7,7 +7,7 @@ interface Props {
   template: Template;
 }
 
-export default function TemplateCard({ template }: Props) {
+export function TemplateCard({ template }: Props) {
   const navigate = useNavigate();
 
   return (

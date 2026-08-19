@@ -51,8 +51,8 @@ export default function LoginPage() {
             <FileText size={18} className="text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold">PT. ALDM</p>
-            <p className="text-[11px] text-white/50">Sistem Penyuratan Digital</p>
+            <p className="text-sm font-semibold">PT. Jaringan Universal Online Solusindo</p>
+            <p className="text-[11px] text-white/50">Sistem Penyuratan Digital Internal</p>
           </div>
         </div>
 
@@ -63,23 +63,13 @@ export default function LoginPage() {
             <span className="text-amber-400">Lebih Efisien</span>
           </h1>
           <p className="text-white/60 text-sm leading-relaxed max-w-xs">
-            Sistem pengelolaan surat digital PT. ALDM — dari pembuatan,
+            Sistem pengelolaan surat digital PT. JUOS — dari pembuatan,
             persetujuan multi-tingkat, hingga pengarsipan otomatis.
           </p>
         </div>
 
-        {/* Stats */}
-        <div className="flex gap-6">
-          {[
-            { value: '2.400+', label: 'Surat Terproses' },
-            { value: '98%',    label: 'Tingkat Persetujuan' },
-            { value: '< 2 Hari', label: 'Rata-rata Waktu' },
-          ].map((s) => (
-            <div key={s.label} className="bg-white/10 rounded-xl px-4 py-3">
-              <p className="text-lg font-bold">{s.value}</p>
-              <p className="text-[11px] text-white/50 mt-0.5">{s.label}</p>
-            </div>
-          ))}
+        {/* Gaps */}
+        <div>
         </div>
       </div>
 

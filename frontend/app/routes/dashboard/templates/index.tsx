@@ -3,15 +3,12 @@ import { useNavigate } from 'react-router';
 import { FileText, Plus, Trash2, Loader2, Tag } from 'lucide-react';
 import { templateService } from '../../../services/api';
 import type { Template } from '../../../types';
-import Base from '~/components/ui/Base';
-import ScreenHeader from '~/components/ui/ScreenHeader';
-import PageLoader from '~/components/ui/PageLoader';
-import ErrorAlert from '~/components/ui/ErrorAlert';
+import { Base, ScreenHeader, PageLoader, ErrorAlert, GreenButton } from '~/components/ui';
 
 const JENIS_COLOR: Record<string, string> = {
-  BAA:     'bg-blue-100 text-blue-700',
-  SPK:     'bg-emerald-100 text-emerald-700',
-  MOU:     'bg-purple-100 text-purple-700',
+  BAA: 'bg-blue-100 text-blue-700',
+  SPK: 'bg-emerald-100 text-emerald-700',
+  MOU: 'bg-purple-100 text-purple-700',
   KONTRAK: 'bg-amber-100 text-amber-700',
 };
 
@@ -22,11 +19,11 @@ function jenisBadge(jenis: string) {
 export default function TemplatesPage() {
   const navigate = useNavigate();
 
-  const [templates, setTemplates]             = useState<Template[]>([]);
-  const [loading, setLoading]                 = useState(true);
-  const [error, setError]                     = useState('');
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [deleting, setDeleting]               = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     templateService.getAll()
@@ -59,13 +56,10 @@ export default function TemplatesPage() {
           title="Template Surat"
           description="Kelola template surat yang tersedia untuk seluruh divisi."
         />
-        <button
-          onClick={() => navigate('/dashboard/templates/new')}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-xl hover:bg-emerald-700 transition-colors shrink-0"
-        >
+        <GreenButton onClick={() => navigate('/dashboard/templates/new')}>
           <Plus size={15} />
           Tambah Template
-        </button>
+        </GreenButton>
       </div>
 
       {error && <div className="mb-6"><ErrorAlert message={error} /></div>}
@@ -74,13 +68,11 @@ export default function TemplatesPage() {
         <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-gray-200 rounded-2xl text-center">
           <FileText size={40} className="mb-3 text-gray-300" />
           <p className="text-sm font-medium text-gray-500">Belum ada template</p>
-          <p className="text-xs text-gray-400 mt-1">Klik "+ Tambah Template" untuk memulai.</p>
-          <button
-            onClick={() => navigate('/dashboard/templates/new')}
-            className="mt-4 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm rounded-xl hover:bg-emerald-700 transition-colors"
-          >
-            <Plus size={14} /> Upload Template Pertama
-          </button>
+          <p className="text-xs text-gray-400 mt-1 mb-4">Klik "+ Tambah Template" untuk memulai.</p>
+          <GreenButton onClick={() => navigate('/dashboard/templates/new')}>
+            <Plus size={14} />
+            Upload Template Pertama
+          </GreenButton>
         </div>
       )}
 
@@ -130,7 +122,7 @@ export default function TemplatesPage() {
                 {/* Actions — Bug 4: hapus edit icon, tambah working delete */}
                 <div className="flex items-center gap-2 mt-3">
                   <button
-                    onClick={() => navigate(`/letters/create/mou2?template_id=${tpl.id}`)}
+                    onClick={() => navigate(`/letters/create/mou?template_id=${tpl.id}`)}
                     className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
                   >
                     Gunakan

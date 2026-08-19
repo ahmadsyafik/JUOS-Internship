@@ -6,7 +6,7 @@ interface Props {
   subColor?: string;
 }
 
-export default function StatCard({ label, value, sub, subColor = 'text-gray-400' }: Props) {
+export function StatCard({ label, value, sub, subColor = 'text-gray-400' }: Props) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <p className="text-xs text-gray-400 mb-1.5">{label}</p>

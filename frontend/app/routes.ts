@@ -20,7 +20,6 @@ export default [
     route("letters", "routes/letters/index.tsx"),
     route("letters/:id", "routes/letters/$id.tsx"),
     route("letters/create/mou", "routes/letters/mou.tsx"),
-    route("letters/create/mou2", "routes/letters/mou2.tsx"),
     route("approval", "routes/approval/index.tsx"),
     route("settings/signature", "routes/dashboard/signature.tsx"),
   ]),

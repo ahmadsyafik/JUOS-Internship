@@ -11,7 +11,7 @@ import { usePendingCount } from '../hooks/usePendingCount';
 import { useRevisionCount } from '../hooks/useRevisionCount';
 
 const SUBMENU_ITEMS = [
-  { to: '/letters/create/mou2', label: 'MoU' },   // ← hapus MoU lama, rename MoU 2 → MoU
+  { to: '/letters/create/mou', label: 'MoU' },
 ];
 
 // Route yang HANYA boleh diakses oleh direktur
@@ -82,8 +82,8 @@ export default function RootLayout() {
               <FileText size={14} className="text-emerald-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-800">PT. ALDM</p>
-              <p className="text-[11px] text-gray-400">Penyuratan Digital</p>
+              <p className="text-sm font-medium text-gray-800">PT. JUOS</p>
+              <p className="text-[11px] text-gray-400">Penyuratan Digital Internal</p>
             </div>
           </div>
         </div>
