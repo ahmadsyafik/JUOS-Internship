@@ -33,7 +33,13 @@ class StoreLetterService
             $nomorSurat = $this->nomorSuratService->generate($template->jenis_surat);
 
             // Generate file DOCX
-            $pathDocx = $this->docxGenerator->generate($template, $dto->dataSurat);
+            // Sisipkan nomor_surat ke data agar placeholder {{nomor_surat}} di template terisi otomatis
+$dataSuratWithNomor = array_merge($dto->dataSurat, [
+    'nomor_surat' => $nomorSurat,
+]);
+
+// Generate file DOCX
+$pathDocx = $this->docxGenerator->generate($template, $dataSuratWithNomor);
 
             // Simpan letter
             return Letter::create([

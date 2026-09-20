@@ -363,7 +363,8 @@ class TemplateController extends Controller
      * Tidak boleh muncul sebagai form field di frontend.
      * Akan diisi saat approval (tanda tangan) atau secara otomatis.
      */
-    private const RESERVED_VARS = ['tanda_tangan', 'ttd', 'ttd_direktur', 'signature'];
+    // nomor_surat ditambahkan — diisi otomatis backend, tidak boleh muncul sebagai form input
+    private const RESERVED_VARS = ['tanda_tangan', 'ttd', 'ttd_direktur', 'signature', 'nomor_surat'];
 
     private function filterReservedVars(array $variabel): array
     {

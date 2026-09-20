@@ -5,7 +5,9 @@ import api, { templateService } from '../../../services/api';
 import { ChevronButton, GreenButton } from '~/components/ui';
 import { WhiteButton } from '~/components/ui/WhiteButton';
 
-const JENIS_OPTIONS = ['BAA', 'SPK', 'MOU', 'KONTRAK'];
+// 4 kategori utama sesuai kebutuhan operasional
+// PSB mencakup sub-dokumen: Kontrak Berlangganan, Berita Acara Aktivasi
+const JENIS_OPTIONS = ['MOU', 'PSB', 'SURAT JALAN', 'PKWT'];
 
 export default function NewTemplatePage() {
   const navigate = useNavigate();

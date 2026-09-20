@@ -6,14 +6,26 @@ import type { Template } from '../../../types';
 import { Base, ScreenHeader, PageLoader, ErrorAlert, GreenButton } from '~/components/ui';
 
 const JENIS_COLOR: Record<string, string> = {
-  BAA: 'bg-blue-100 text-blue-700',
-  SPK: 'bg-emerald-100 text-emerald-700',
-  MOU: 'bg-purple-100 text-purple-700',
-  KONTRAK: 'bg-amber-100 text-amber-700',
+  MOU:           'bg-purple-100 text-purple-700',
+  PSB:           'bg-cyan-100 text-cyan-700',
+  KONTRAK:       'bg-cyan-100 text-cyan-700',   // sub-tipe PSB, warna sama
+  BAA:           'bg-cyan-100 text-cyan-700',   // sub-tipe PSB, warna sama
+  'SURAT JALAN': 'bg-orange-100 text-orange-700',
+  PKWT:          'bg-indigo-100 text-indigo-700',
+  SPK:           'bg-emerald-100 text-emerald-700',
 };
 
 function jenisBadge(jenis: string) {
   return JENIS_COLOR[jenis.toUpperCase()] ?? 'bg-gray-100 text-gray-600';
+}
+
+// Tentukan route buat surat berdasarkan jenis_surat template
+function getLetterRoute(jenisSurat: string): string {
+  const js = jenisSurat.toUpperCase();
+  if (['PSB', 'KONTRAK', 'BAA'].includes(js)) return '/letters/create/psb';
+  if (js === 'SURAT JALAN')                   return '/letters/create/surat-jalan';
+  if (js === 'PKWT')                          return '/letters/create/pkwt';
+  return '/letters/create/mou'; // default MOU dan jenis lain
 }
 
 export default function TemplatesPage() {
@@ -122,11 +134,11 @@ export default function TemplatesPage() {
                 {/* Actions — Bug 4: hapus edit icon, tambah working delete */}
                 <div className="flex items-center gap-2 mt-3">
                   <button
-                    onClick={() => navigate(`/letters/create/mou?template_id=${tpl.id}`)}
-                    className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
-                  >
-                    Gunakan
-                  </button>
+  onClick={() => navigate(`${getLetterRoute(tpl.jenis_surat)}?template_id=${tpl.id}`)}
+  className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+>
+  Gunakan
+</button>
                   {/* Pencil/Edit icon DIHAPUS */}
                   <button
                     onClick={() => setDeleteConfirmId(tpl.id)}

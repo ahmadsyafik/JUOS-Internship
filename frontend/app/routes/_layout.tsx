@@ -11,9 +11,11 @@ import { usePendingCount } from '../hooks/usePendingCount';
 import { useRevisionCount } from '../hooks/useRevisionCount';
 
 const SUBMENU_ITEMS = [
-  { to: '/letters/create/mou', label: 'MoU' },
+  { to: '/letters/create/mou',         label: 'MoU' },
+  { to: '/letters/create/psb',         label: 'PSB' },
+  { to: '/letters/create/surat-jalan', label: 'Surat Jalan' },
+  { to: '/letters/create/pkwt',        label: 'PKWT' },
 ];
-
 // Route yang HANYA boleh diakses oleh direktur
 const DIREKTUR_ONLY_PATHS = [
   '/settings/signature',

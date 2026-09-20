@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router';
 import {
   ChevronLeft, Loader2, FileText, Upload, Tag,
   CheckCircle2, AlertCircle, Check, X,
@@ -12,9 +12,13 @@ import { ErrorAlert } from '~/components/ui';
 import { FaCopy } from "react-icons/fa";
 import { PageShell } from '~/components/letters/PageShell';
 
+
 type Step = 'template' | 'form';
 
 const APPROVAL_FLOW = ['Admin TU', 'Kepala Dept.', 'Direktur'];
+// Deteksi apakah key adalah field tanggal — otomatis tampil sebagai date picker
+const isDateKey = (key: string) =>
+  ['tanggal', 'tgl', 'date'].some(k => key.toLowerCase().includes(k));
 
 // ─── CSV Parser RFC 4180 — handle koma di dalam tanda kutip ───────────────────
 // Bug 3 fix: "Dsn. Lembung, Kec. Deket, Kab. Lamongan" tidak lagi dipecah
@@ -65,8 +69,23 @@ function formatLabel(key: string): string {
 }
 
 export default function MouTwoPage() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const [searchParams] = useSearchParams();
+
+  // Definisi di sini agar bisa dipakai di dalam useEffect tanpa hoisting error
+  const bulanRomawi = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+  const now   = new Date();
+  const today = now.toISOString().split('T')[0]; // format YYYY-MM-DD untuk input date
+
+  // Deteksi jenis surat dari URL — satu komponen untuk semua jenis
+  const jenisSurat = location.pathname.includes('/psb')         ? 'PSB'
+    : location.pathname.includes('/surat-jalan') ? 'SURAT JALAN'
+    : location.pathname.includes('/pkwt')        ? 'PKWT'
+    : 'MOU';
+
+  // Sub-tipe yang masuk kategori PSB (template lama yang sudah telanjur upload sebagai KONTRAK/BAA)
+  const PSB_SUBTYPES = ['PSB', 'KONTRAK', 'BAA'];
   const csvRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -99,26 +118,30 @@ export default function MouTwoPage() {
 
   const [id, setId] = useState<number | null>(null);
   const [nomorSurat, setNomorSurat] = useState('');
+  const [tanggalSurat, setTanggalSurat] = useState(today); 
   const editingLetterId = searchParams.get('letter_id') ? Number(searchParams.get('letter_id')) : null;
 
-  useEffect(() => {
+ useEffect(() => {
+  letterService.getAll().then((res) => {
+    const firstId = res.data.data?.[0]?.id;
+    if (firstId != null) setId(firstId);
+    setNomorSurat(`${jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/***`);
+  });
 
-    letterService.getAll().then((res) => {
-      const firstId = res.data.data?.[0]?.id;
-      if (firstId != null) {
-        setId(firstId);
-      }
-
-      const generated = `MOU/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${firstId != null ? firstId + 1 : 0}`;
-      setNomorSurat(generated);
-    });
-
-    templateService.getAll()
-      .then((res) => setTemplates(res.data.data ?? []))
-      .catch(() => setListError('Gagal memuat daftar template.'))
-      .finally(() => setLoadingList(false));
-  }, []);
-
+  setTemplates([]);
+  setLoadingList(true);
+  templateService.getAll()
+    .then((res) => {
+      const all: Template[] = res.data.data ?? [];
+      setTemplates(all.filter(t => {
+        const js = t.jenis_surat.toUpperCase();
+        if (jenisSurat === 'PSB') return PSB_SUBTYPES.includes(js);
+        return js === jenisSurat;
+      }));
+    })
+    .catch(() => setListError('Gagal memuat daftar template.'))
+    .finally(() => setLoadingList(false));
+}, [jenisSurat]);   // ← re-run setiap kali jenis surat berubah (pindah route)
   // Bug 1 fix: jika ada letter_id di URL → load data letter untuk edit/resubmit
   useEffect(() => {
     const lid = searchParams.get('letter_id');
@@ -194,7 +217,9 @@ export default function MouTwoPage() {
   const selectTemplate = (tpl: Template) => {
     setSelected(tpl);
     const initial: Record<string, string> = {};
-    tpl.variabel.forEach((v) => (initial[v] = ''));
+    tpl.variabel.forEach((v) => {
+  initial[v] = isDateKey(v) ? today : '';
+});
     setFormData(initial);
     if (!editingLetterId) {
       setNomorSurat(`MOU/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : '001'}`);
@@ -266,11 +291,17 @@ export default function MouTwoPage() {
 
   const handleSubmit = async () => {
     if (!selected) return;
-    const empty = selected.variabel.filter((k) => !formData[k]?.trim());
-    if (empty.length > 0) {
-      setSubmitError(`Field belum diisi: ${empty.map(formatLabel).join(', ')}`);
-      return;
-    }
+   // Field yang tidak wajib diisi — cukup biarkan kosong
+const OPTIONAL_FIELDS = ['npwp'];
+
+const empty = selected.variabel.filter((k) =>
+  !OPTIONAL_FIELDS.some(opt => k.toLowerCase().includes(opt)) &&
+  !formData[k]?.trim()
+);
+if (empty.length > 0) {
+  setSubmitError(`Field belum diisi: ${empty.map(formatLabel).join(', ')}`);
+  return;
+}
 
     setSubmitting(true);
     setSubmitError('');
@@ -310,10 +341,8 @@ export default function MouTwoPage() {
     }
   };
 
-  const now = new Date();
-  const bulanRomawi = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-
-  const nomorSuratValue = nomorSurat || `MOU/JUOS/${bulanRomawi[now.getMonth()]}/${now.getFullYear()}/${id !== null ? id + 1 : 0}`;
+  // bulanRomawi dan now sudah didefinisikan di atas komponen
+  const nomorSuratValue = nomorSurat || `${jenisSurat}/JUOS/${bulanRomawi[now.getMonth()]}/${now.getFullYear()}/***`;
 
   // ====== STEP 1 ======
   if (step === 'template') {
@@ -467,29 +496,25 @@ export default function MouTwoPage() {
             )}
 
             {selected?.variabel.map((key) => (
-              <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{formatLabel(key)}</label>
-                <input
-                  type="text"
-                  value={formData[key] ?? ''}
-                  onChange={(e) => handleFieldChange(key, e.target.value)}
-                  placeholder={`Masukkan ${formatLabel(key).toLowerCase()}`}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white placeholder:text-gray-300"
-                />
-              </div>
-            ))}
+  <div key={key}>
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">{formatLabel(key)}</label>
+    <input
+      type={isDateKey(key) ? 'date' : 'text'}
+      value={formData[key] ?? (isDateKey(key) ? today : '')}
+      onChange={(e) => handleFieldChange(key, e.target.value)}
+      placeholder={isDateKey(key) ? undefined : `Masukkan ${formatLabel(key).toLowerCase()}`}
+      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white placeholder:text-gray-300"
+    />
+  </div>
+))}
 
-            {/* Tanggal + Jenis */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Tanggal Surat</label>
-                <input type="date" className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Jenis Surat</label>
-                <div className="px-3 py-2.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50">{selected?.jenis_surat}</div>
-              </div>
-            </div>
+            {/* Jenis Surat — full width, tanggal sudah dari variabel template */}
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-1.5">Jenis Surat</label>
+  <div className="px-3 py-2.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50">
+    {selected?.jenis_surat}
+  </div>
+</div>
 
             {/* Bug 3: Isi Surat dan Lampiran DIHAPUS — sudah ada di template DOCX */}
 

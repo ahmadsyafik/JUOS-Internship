@@ -80,7 +80,7 @@ export default function LoginPage() {
             Selamat datang kembali
           </h2>
           <p className="text-sm text-gray-400 mb-8">
-            Masuk ke Sistem Penyuratan Digital PT. ALDM
+            Masuk ke Sistem Penyuratan Digital PT. JUOS
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
