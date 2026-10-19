@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\DTO\StoreLetterDTO;
 use App\Models\Letter;
+use App\Services\Letter\ApproveLetterService;
 use App\Services\Letter\DocxGeneratorService;
 use App\Services\Letter\LetterValidatorService;
 use App\Services\Letter\PdfConverterService;
+use App\Services\Letter\RejectLetterService;
 use App\Services\Letter\StoreLetterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +19,9 @@ use Illuminate\Support\Facades\Storage;
 class LetterController extends Controller
 {
     public function __construct(
-        private readonly StoreLetterService $storeLetterService,
+        private readonly StoreLetterService   $storeLetterService,
+        private readonly ApproveLetterService $approveLetterService,
+        private readonly RejectLetterService  $rejectLetterService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -296,136 +300,89 @@ public function destroy(Letter $letter): JsonResponse
     }
 
     /**
- * PATCH /api/letters/{letter}/approve
- * Bug 3 fix: implementasi approve + sisipkan TTD direktur ke DOCX
- * pada placeholder {{tanda_tangan}} di kolom TTD direktur (halaman 2 template).
- */
-public function approve(Request $request, Letter $letter): JsonResponse
-{
-    $request->validate([
-        'catatan' => 'nullable|string|max:1000',
-    ]);
+     * PATCH /api/letters/{letter}/approve
+     * Delegasikan persetujuan dan penyematan tanda tangan ke ApproveLetterService
+     */
+    public function approve(Request $request, Letter $letter): JsonResponse
+    {
+        $request->validate([
+            'catatan' => 'nullable|string|max:1000',
+        ]);
 
-    $user = $request->user();
+        $user = $request->user();
 
-    if (!$user) {
-        return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
-    }
-
-    if ($letter->status !== 'pending_approval') {
-        return response()->json([
-            'success' => false,
-            'message' => 'Surat tidak dalam status menunggu persetujuan.',
-        ], 422);
-    }
-
-    try {
-        // Sisipkan TTD ke DOCX jika direktur sudah upload signature
-        if ($user->signature_path && $letter->path_docx) {
-            $signaturePath = Storage::disk('public')->path($user->signature_path);
-            $docxPath      = Storage::disk('public')->path($letter->path_docx);
-
-            if (file_exists($signaturePath) && file_exists($docxPath)) {
-                $processor = new \PhpOffice\PhpWord\TemplateProcessor($docxPath);
-                // Template menggunakan {{}} bukan ${}
-                $processor->setMacroChars('{{', '}}');
-
-                // Sisipkan gambar TTD pada placeholder {{tanda_tangan}}
-                // di kolom TTD direktur (bagian bawah halaman 2 template)
-                $processor->setImageValue('tanda_tangan', [
-                    'path'   => $signaturePath,
-                    'width'  => 100,
-                    'height' => 50,
-                    'ratio'  => true,
-                ]);
-
-                $processor->saveAs($docxPath);
-
-                // Hapus cache PDF agar diregenerasi dengan TTD
-                if ($letter->path_pdf) {
-                    $cachedPdf = Storage::disk('public')->path($letter->path_pdf);
-                    if (file_exists($cachedPdf)) @unlink($cachedPdf);
-                }
-            }
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
         }
 
-        // Simpan record approval
-        \App\Models\Approval::create([
-            'letter_id'   => $letter->id,
-            'reviewed_by' => $user->id,
-            'status'      => 'approved',
-            'catatan'     => $request->input('catatan'),
-            'reviewed_at' => now(),
-        ]);
+        try {
+            $updatedLetter = $this->approveLetterService->handle(
+                $letter,
+                $user,
+                $request->input('catatan')
+            );
 
-        // Update status surat + reset path_pdf agar dikonversi ulang
-        $letter->update(['status' => 'approved', 'path_pdf' => null]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Surat berhasil disetujui.',
+                'data'    => $updatedLetter,
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Surat berhasil disetujui.',
-            'data'    => $letter->fresh()->load(['template', 'creator', 'latestApproval.reviewer']),
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Approve letter failed', [
-            'letter_id' => $letter->id,
-            'error'     => $e->getMessage(),
-        ]);
-        return response()->json([
-            'success' => false,
-            'message' => 'Gagal menyetujui surat: ' . $e->getMessage(),
-        ], 500);
-    }
-}
-
-/**
- * PATCH /api/letters/{letter}/reject
- * Tolak Permanen — status menjadi 'rejected'
- */
-public function reject(Request $request, Letter $letter): JsonResponse
-{
-    $request->validate([
-        'catatan' => 'required|string|max:1000',
-    ]);
-
-    $user = $request->user();
-    if (!$user) {
-        return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Approve letter failed', [
+                'letter_id' => $letter->id,
+                'error'     => $e->getMessage(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyetujui surat: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
-    if ($letter->status !== 'pending_approval') {
-        return response()->json([
-            'success' => false,
-            'message' => 'Surat tidak dalam status menunggu persetujuan.',
-        ], 422);
+    /**
+     * PATCH /api/letters/{letter}/reject
+     * Delegasikan penolakan surat ke RejectLetterService
+     */
+    public function reject(Request $request, Letter $letter): JsonResponse
+    {
+        $request->validate([
+            'catatan' => 'required|string|max:1000',
+        ]);
+
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
+        }
+
+        try {
+            $updatedLetter = $this->rejectLetterService->handle(
+                $letter,
+                $user,
+                $request->input('catatan')
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Surat ditolak.',
+                'data'    => $updatedLetter,
+            ]);
+
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Reject letter failed', ['letter_id' => $letter->id, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Gagal menolak surat: ' . $e->getMessage()], 500);
+        }
     }
-
-    try {
-        \App\Models\Approval::create([
-            'letter_id'   => $letter->id,
-            'reviewed_by' => $user->id,
-            'status'      => 'rejected',
-            'catatan'     => $request->input('catatan'),
-            'reviewed_at' => now(),
-        ]);
-
-        $letter->update([
-            'status' => 'rejected',
-            'catatan_reject' => $request->input('catatan'),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Surat ditolak.',
-            'data'    => $letter->fresh()->load(['template', 'creator', 'latestApproval.reviewer']),
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Reject letter failed', ['letter_id' => $letter->id, 'error' => $e->getMessage()]);
-        return response()->json(['success' => false, 'message' => 'Gagal menolak surat: ' . $e->getMessage()], 500);
-    }
-}
 
 /**
  * PATCH /api/letters/{letter}/revise

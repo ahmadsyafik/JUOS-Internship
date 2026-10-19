@@ -1,124 +1,94 @@
-import { useEffect, useState, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router';
-import {
-  ChevronLeft, Loader2, FileText, Upload, Tag,
-  CheckCircle2, AlertCircle, Check, X,
-  Trash2,
-  FileVideo,
-} from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router';
+import { ChevronLeft, Loader2, Check } from 'lucide-react';
+import { FaCopy } from 'react-icons/fa';
 import { letterService, templateService } from '../../services/api';
-import type { Letter, Template } from '../../types';
-import { ErrorAlert } from '~/components/ui';
-import { FaCopy } from "react-icons/fa";
-import { PageShell } from '~/components/letters/PageShell';
-
+import type { Template } from '../../types';
+import {
+  PageShell,
+  TemplateSelector,
+  TeamTable,
+  DynamicFormField,
+  PdfPreviewPane,
+} from '~/components/letters';
+import { useTeamTable } from '~/hooks/useTeamTable';
+import { parseCsvAllRows } from '~/utils/csv';
+import {
+  APPROVAL_FLOW,
+  PSB_SUBTYPES,
+  BULAN_ROMAWI,
+  formatLabel,
+  isDateKey,
+  isConditional,
+  generateDefaultNomorSurat,
+} from '~/utils/letterForm';
 
 type Step = 'template' | 'form';
 
-const APPROVAL_FLOW = ['Admin TU', 'Kepala Dept.', 'Direktur'];
-// Deteksi apakah key adalah field tanggal — otomatis tampil sebagai date picker
-const isDateKey = (key: string) =>
-  ['tanggal', 'tgl', 'date'].some(k => key.toLowerCase().includes(k));
-
-// ─── CSV Parser RFC 4180 — handle koma di dalam tanda kutip ───────────────────
-// Bug 3 fix: "Dsn. Lembung, Kec. Deket, Kab. Lamongan" tidak lagi dipecah
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else if (ch === '\r') {
-      // skip CR
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current.trim());
-  return result;
-}
-
-function parseCsvAllRows(text: string): { headers: string[]; rows: Record<string, string>[] } {
-  const lines = text.trim().split('\n').filter(Boolean);
-  if (lines.length < 2) return { headers: [], rows: [] };
-
-  const headers = parseCsvLine(lines[0]);
-  const rows = lines.slice(1).map((line) => {
-    const values = parseCsvLine(line);
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = values[i] ?? ''; });
-    return row;
-  });
-
-  return { headers, rows };
-}
-
-function formatLabel(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: string } = {}) {
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  // Definisi di sini agar bisa dipakai di dalam useEffect tanpa hoisting error
-  const bulanRomawi = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
-  const now   = new Date();
+  const now = new Date();
   const today = now.toISOString().split('T')[0];
-  
-  // ─── State khusus fitur baru ──────────────────────────────────────────────
-// Team table (SPK)
-const [teamRows, setTeamRows] = useState<{ nama: string; jabatan: string }[]>([]);
-const teamCsvRef = useRef<HTMLInputElement>(null);
 
-// Gambar maps — upload manual (base64 untuk dikirim ke backend)
-const [imageFiles, setImageFiles] = useState<Record<string, string>>({});
-const imageRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-// Prioritas: prop > path > default
-// Evaluasi fresh setiap render — tidak ada stale closure
-const path = location.pathname;
-const jenisSurat: string =
-  forcedJenisSurat                         ? forcedJenisSurat   :
-  path.includes('/surat-jalan')            ? 'SURAT JALAN'      :
-  path.includes('/pkwt')                   ? 'PKWT'             :
-  path.includes('/psb')                    ? 'PSB'              :
-  'MOU';
-
-  // Sub-tipe yang masuk kategori PSB (template lama yang sudah telanjur upload sebagai KONTRAK/BAA)
-  const PSB_SUBTYPES = ['PSB', 'KONTRAK', 'BAA'];
-  const csvRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Prioritas jenis surat: prop > pathname > default
+  const path = location.pathname;
+  const jenisSurat: string =
+    forcedJenisSurat
+      ? forcedJenisSurat
+      : path.includes('/surat-jalan')
+      ? 'SURAT JALAN'
+      : path.includes('/pkwt')
+      ? 'PKWT'
+      : path.includes('/psb')
+      ? 'PSB'
+      : 'MOU';
 
   const [step, setStep] = useState<Step>('template');
 
+  // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState('');
-
   const [selected, setSelected] = useState<Template | null>(null);
-  const [formData, setFormData] = useState<Record<string, string>>({});
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
-  // PDF preview
+  // Form Data
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [imageFiles, setImageFiles] = useState<Record<string, string>>({});
+  const [id, setId] = useState<number | null>(null);
+  const [nomorSurat, setNomorSurat] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  const editingLetterId = searchParams.get('letter_id')
+    ? Number(searchParams.get('letter_id'))
+    : null;
+
+  // Tim Teknis (SPK) hook
+  const hasTeamTable = Boolean(
+    selected?.variabel.includes('nama') && selected?.variabel.includes('jabatan')
+  );
+  const {
+    teamRows,
+    setTeamRows,
+    teamCsvRef,
+    addRow: addTeamRow,
+    removeRow: removeTeamRow,
+    updateRow: updateTeamRow,
+    handleCsvUpload: handleTeamCsvUpload,
+    isTeamManagedKey,
+  } = useTeamTable(hasTeamTable);
+
+  // PDF Preview
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // CSV
+  // CSV Importer for entire form
+  const csvRef = useRef<HTMLInputElement>(null);
   const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [showCsvPicker, setShowCsvPicker] = useState(false);
@@ -126,109 +96,40 @@ const jenisSurat: string =
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvMsg, setCsvMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  // Inisialisasi saat route / jenisSurat berubah
+  useEffect(() => {
+    setStep('template');
+    setSelected(null);
+    setFormData({});
+    setPdfUrl(null);
+    setTeamRows([]);
+    setCsvMsg(null);
+    setNomorSurat(generateDefaultNomorSurat(jenisSurat, null));
 
-  const [id, setId] = useState<number | null>(null);
-  const [nomorSurat, setNomorSurat] = useState('');
-  const [tanggalSurat, setTanggalSurat] = useState(today); 
-  const editingLetterId = searchParams.get('letter_id') ? Number(searchParams.get('letter_id')) : null;
+    letterService.getAll().then((res) => {
+      const firstId = res.data.data?.[0]?.id;
+      if (firstId != null) setId(firstId);
+    });
 
-const hasTeamTable = Boolean(
-  selected?.variabel.includes('nama') &&
-  selected?.variabel.includes('jabatan')
-);
+    setTemplates([]);
+    setLoadingList(true);
+    templateService
+      .getAll()
+      .then((res) => {
+        const all: Template[] = res.data.data ?? [];
+        setTemplates(
+          all.filter((t) => {
+            const js = t.jenis_surat.toUpperCase();
+            if (jenisSurat === 'PSB') return PSB_SUBTYPES.includes(js);
+            return js === jenisSurat;
+          })
+        );
+      })
+      .catch(() => setListError('Gagal memuat daftar template.'))
+      .finally(() => setLoadingList(false));
+  }, [jenisSurat]);
 
-const SELECT_OPTIONS: Record<string, string[]> = {
-  status_perangkat: ['Belum dikembalikan', 'Hilang', 'Rusak', 'Lainnya'],
-};
-
-const isSelectKey     = (key: string) => key in SELECT_OPTIONS;
-const isConditional   = (key: string) =>
-  key === 'lainnya' && formData['status_perangkat'] !== 'Lainnya';
-const isTeamManagedKey = (key: string) =>
-  hasTeamTable && (key === 'nama' || key === 'jabatan');
-const isDateKey       = (key: string) =>
-  ['tanggal', 'tgl', 'date'].some(k => key.toLowerCase().includes(k));
-
-// Image upload — ganti auto-screenshot dengan upload manual
-const isImageKey      = (key: string) =>
-  key.toLowerCase().includes('_img') || key.toLowerCase().includes('_gambar');
-
-// URL maps — validasi format (dipakai untuk start_lokasi, end_lokasi yang masih berupa link)
-const isMapsKey       = (key: string) =>
-  ['start_lokasi', 'end_lokasi'].includes(key);
-const isValidMapsUrl  = (url: string) =>
-  !url ||
-  /^https?:\/\/(www\.)?google\.com\/maps/.test(url) ||
-  /^https?:\/\/maps\.google\.com/.test(url) ||
-  /^https?:\/\/maps\.app\.goo\.gl/.test(url);
-
-  // Field yang dikelola team table, skip dari form input biasa
-
-const handleTeamCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const text = await file.text();
-  const { headers, rows } = parseCsvAllRows(text);
-  // Cari kolom nama dan jabatan (case-insensitive)
-  const namaCol    = headers.find(h => h.toLowerCase().includes('nama')) ?? headers[0];
-  const jabatanCol = headers.find(h => h.toLowerCase().includes('jabatan')) ?? headers[1];
-
-  const team = rows.map(row => ({
-    nama:    row[namaCol]    ?? '',
-    jabatan: row[jabatanCol] ?? '',
-  })).filter(r => r.nama || r.jabatan);
-
-  setTeamRows(team);
-  if (teamCsvRef.current) teamCsvRef.current.value = '';
-};
-
-const handleImageUpload = async (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const base64 = (reader.result as string).split(',')[1];
-    setImageFiles(prev => ({ ...prev, [key]: base64 }));
-    handleFieldChange(key, base64);
-  };
-  reader.readAsDataURL(file);
-};
-
-useEffect(() => {
-  setStep('template');
-  setSelected(null);
-  setFormData({});
-  setPdfUrl(null);
-  setTeamRows([]);
-  setCsvMsg(null);
-
-  // Synchronous — tidak ada closure issue, jenisSurat sudah benar di sini
-  setNomorSurat(`${jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/***`);
-
-  // Async call — hanya ambil ID, tidak perlu set nomorSurat lagi
-  letterService.getAll().then((res) => {
-    const firstId = res.data.data?.[0]?.id;
-    if (firstId != null) setId(firstId);
-  });
-
-  setTemplates([]);
-  setLoadingList(true);
-  templateService.getAll()
-    .then((res) => {
-      const all: Template[] = res.data.data ?? [];
-      setTemplates(all.filter(t => {
-        const js = t.jenis_surat.toUpperCase();
-        if (jenisSurat === 'PSB') return PSB_SUBTYPES.includes(js);
-        return js === jenisSurat;
-      }));
-    })
-    .catch(() => setListError('Gagal memuat daftar template.'))
-    .finally(() => setLoadingList(false));
-
-}, [jenisSurat]);  // ← re-run setiap kali jenis surat berubah (pindah route)
-  // Bug 1 fix: jika ada letter_id di URL → load data letter untuk edit/resubmit
+  // Load existing letter or template from URL query params
   useEffect(() => {
     const lid = searchParams.get('letter_id');
     if (!lid) {
@@ -239,19 +140,14 @@ useEffect(() => {
       if (!tpl) return;
 
       setSelected(tpl);
-      setFormData(Object.fromEntries(tpl.variabel.map((v) => [v, ''])));
-      setNomorSurat(`{jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : 0}`);
-      setCsvMsg(null);
-      setCsvFileName('');
-      setCsvRows([]);
-      setShowCsvPicker(false);
-      setSubmitError('');
-      setPdfUrl(null);
+      setFormData(Object.fromEntries(tpl.variabel.map((v) => [v, isDateKey(v) ? today : ''])));
+      setNomorSurat(generateDefaultNomorSurat(jenisSurat, id));
       setStep('form');
       return;
     }
 
-    letterService.getById(Number(lid))
+    letterService
+      .getById(Number(lid))
       .then((res) => {
         const letter = res.data.data ?? res.data;
         if (!letter) return;
@@ -259,42 +155,40 @@ useEffect(() => {
         setSelected(letter.template ?? null);
         setFormData(letter.data_surat ?? {});
         setNomorSurat(letter.nomor_surat || '');
+
         if (letter.data_surat?.tim_nama_json && letter.data_surat?.tim_jabatan_json) {
           try {
-            const names = typeof letter.data_surat.tim_nama_json === 'string'
-              ? JSON.parse(letter.data_surat.tim_nama_json)
-              : letter.data_surat.tim_nama_json;
-            const jabatans = typeof letter.data_surat.tim_jabatan_json === 'string'
-              ? JSON.parse(letter.data_surat.tim_jabatan_json)
-              : letter.data_surat.tim_jabatan_json;
+            const names =
+              typeof letter.data_surat.tim_nama_json === 'string'
+                ? JSON.parse(letter.data_surat.tim_nama_json)
+                : letter.data_surat.tim_nama_json;
+            const jabatans =
+              typeof letter.data_surat.tim_jabatan_json === 'string'
+                ? JSON.parse(letter.data_surat.tim_jabatan_json)
+                : letter.data_surat.tim_jabatan_json;
+
             if (Array.isArray(names) && Array.isArray(jabatans)) {
               const count = Math.min(names.length, jabatans.length);
               const rows = [];
               for (let i = 0; i < count; i++) {
                 rows.push({ nama: names[i] || '', jabatan: jabatans[i] || '' });
               }
-              if (rows.length > 0) {
-                setTeamRows(rows);
-              }
+              if (rows.length > 0) setTeamRows(rows);
             }
           } catch (e) {
             console.error('Failed to parse team rows', e);
           }
         }
+
         setCsvMsg(null);
-        setCsvFileName('');
-        setCsvRows([]);
-        setShowCsvPicker(false);
         setSubmitError('');
         setPdfUrl(null);
         setStep('form');
       })
-      .catch(() => {
-        // Gagal load letter — biarkan user pilih template manual
-      });
+      .catch(() => {});
   }, [searchParams, templates]);
 
-  // Debounce preview — generate PDF setiap formData berubah
+  // Debounced PDF Preview
   useEffect(() => {
     if (!selected) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -305,10 +199,12 @@ useEffect(() => {
       try {
         const previewData = { ...formData };
         if (hasTeamTable && teamRows.length > 0) {
-          const validTeamRows = teamRows.filter(r => r.nama.trim() || r.jabatan.trim());
+          const validTeamRows = teamRows.filter((r) => r.nama.trim() || r.jabatan.trim());
           if (validTeamRows.length > 0) {
-            previewData['tim_nama_json']    = JSON.stringify(validTeamRows.map(r => r.nama.trim()));
-            previewData['tim_jabatan_json'] = JSON.stringify(validTeamRows.map(r => r.jabatan.trim()));
+            previewData['tim_nama_json'] = JSON.stringify(validTeamRows.map((r) => r.nama.trim()));
+            previewData['tim_jabatan_json'] = JSON.stringify(
+              validTeamRows.map((r) => r.jabatan.trim())
+            );
             previewData['nama'] = validTeamRows[0].nama.trim();
             previewData['jabatan'] = validTeamRows[0].jabatan.trim();
           }
@@ -318,8 +214,8 @@ useEffect(() => {
           template_id: selected.id,
           data_surat: previewData,
         });
+
         if (res.data?.success) {
-          // Bug 1 fix: tambah #toolbar=0&navpanes=0 agar sidebar PDF viewer tidak muncul
           setPdfUrl(res.data.data.pdf_url + '?v=' + res.data.data.key + '#toolbar=0&navpanes=0');
         }
       } catch (err: any) {
@@ -330,18 +226,20 @@ useEffect(() => {
       }
     }, 900);
 
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [selected, formData]);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [selected, formData, teamRows]);
 
   const selectTemplate = (tpl: Template) => {
     setSelected(tpl);
     const initial: Record<string, string> = {};
     tpl.variabel.forEach((v) => {
-  initial[v] = isDateKey(v) ? today : '';
-});
+      initial[v] = isDateKey(v) ? today : '';
+    });
     setFormData(initial);
     if (!editingLetterId) {
-      setNomorSurat(`${jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : '001'}`);
+      setNomorSurat(generateDefaultNomorSurat(jenisSurat, id));
     }
     setCsvMsg(null);
     setCsvFileName('');
@@ -356,6 +254,11 @@ useEffect(() => {
     setFormData((prev) => ({ ...prev, [key]: val }));
   };
 
+  const handleImageUpload = (key: string, base64: string) => {
+    setImageFiles((prev) => ({ ...prev, [key]: base64 }));
+  };
+
+  // CSV Upload untuk form data
   const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -376,7 +279,10 @@ useEffect(() => {
       setCsvHeaders(headers);
       setCsvRows(rows);
       setShowCsvPicker(true);
-      setCsvMsg({ type: 'success', text: `${rows.length} baris ditemukan. Pilih nomor data di bawah.` });
+      setCsvMsg({
+        type: 'success',
+        text: `${rows.length} baris ditemukan. Pilih nomor data di bawah.`,
+      });
     } catch (err: any) {
       setCsvMsg({ type: 'error', text: err.message || 'Gagal membaca CSV.' });
     } finally {
@@ -389,13 +295,11 @@ useEffect(() => {
     const row = csvRows[index];
     if (!row) return;
 
-    const matched: string[] = [];
     setFormData((prev) => {
       const updated = { ...prev };
       Object.keys(updated).forEach((k) => {
         if (row[k] !== undefined) {
           updated[k] = row[k];
-          matched.push(k);
         }
       });
       return updated;
@@ -405,196 +309,92 @@ useEffect(() => {
       type: 'success',
       text: `Baris ${index + 1} berhasil diisi. Pilih baris lain atau tutup dengan ✕`,
     });
-    // Bug 2 fix: JANGAN tutup picker — user bisa pilih baris lain tanpa harus buka ulang
   };
 
-const handleSubmit = async () => {
-  if (!selected) return;
+  // Submit Handler
+  const handleSubmit = async () => {
+    if (!selected) return;
 
-  const validTeamRows = teamRows.filter(r => r.nama.trim() || r.jabatan.trim());
-  const teamHasData = validTeamRows.length > 0;
+    const validTeamRows = teamRows.filter((r) => r.nama.trim() || r.jabatan.trim());
+    const teamHasData = validTeamRows.length > 0;
 
-  if (hasTeamTable && !teamHasData) {
-    setSubmitError('Tim teknis wajib diisi minimal 1 anggota.');
-    return;
-  }
-
-  // Tim teknis: skip nama/jabatan/no dari validasi jika teamRows sudah diisi
-  const TEAM_KEYS = ['nama', 'jabatan', 'no'];
-
-  const OPTIONAL_FIELDS = ['npwp', 'lainnya'];
-
-  const empty = selected.variabel.filter((k) => {
-    if (teamHasData && TEAM_KEYS.includes(k)) return false;
-    if (OPTIONAL_FIELDS.some((opt: string) => k.toLowerCase().includes(opt))) return false;
-    if (isConditional(k)) return false;
-    return !formData[k]?.trim();
-  });
-
-  if (empty.length > 0) {
-    setSubmitError(`Field belum diisi: ${empty.map(formatLabel).join(', ')}`);
-    return;
-  }
-
-  setSubmitting(true);
-  setSubmitError('');
-
-  // Gabungkan team data — pakai teamHasData bukan hasTeamTable
-  const finalData = { ...formData };
-  if (teamHasData) {
-    finalData['tim_nama_json']    = JSON.stringify(validTeamRows.map(r => r.nama.trim()));
-    finalData['tim_jabatan_json'] = JSON.stringify(validTeamRows.map(r => r.jabatan.trim()));
-    if (validTeamRows[0]) {
-      finalData['nama'] = validTeamRows[0].nama.trim();
-      finalData['jabatan'] = validTeamRows[0].jabatan.trim();
+    if (hasTeamTable && !teamHasData) {
+      setSubmitError('Tim teknis wajib diisi minimal 1 anggota.');
+      return;
     }
-  }
 
-  try {
-    if (editingLetterId) {
-      await letterService.update(editingLetterId, {
-        template_id: selected.id,
-        data_surat: finalData,
-        status: 'pending_approval',
-      });
-    } else {
-      await letterService.create({ template_id: selected.id, data_surat: finalData });
+    const TEAM_KEYS = ['nama', 'jabatan', 'no'];
+    const OPTIONAL_FIELDS = ['npwp', 'lainnya'];
+
+    const empty = selected.variabel.filter((k) => {
+      if (teamHasData && TEAM_KEYS.includes(k)) return false;
+      if (OPTIONAL_FIELDS.some((opt: string) => k.toLowerCase().includes(opt))) return false;
+      if (isConditional(k, formData)) return false;
+      return !formData[k]?.trim();
+    });
+
+    if (empty.length > 0) {
+      setSubmitError(`Field belum diisi: ${empty.map(formatLabel).join(', ')}`);
+      return;
     }
-    navigate('/letters');
-  } catch (err: any) {
-    const msg = err?.response?.data?.message;
-    const dbg = err?.response?.data?.debug;
-    setSubmitError(dbg ? `${msg} — ${dbg}` : (msg ?? 'Gagal mengirim surat.'));
-  } finally {
-    setSubmitting(false);
-  }
-};
 
-  const handleDeleteTemplate = async () => {
-    if (!deleteConfirmId) return;
-    setDeleting(true);
+    setSubmitting(true);
+    setSubmitError('');
+
+    const finalData = { ...formData };
+    if (teamHasData) {
+      finalData['tim_nama_json'] = JSON.stringify(validTeamRows.map((r) => r.nama.trim()));
+      finalData['tim_jabatan_json'] = JSON.stringify(validTeamRows.map((r) => r.jabatan.trim()));
+      if (validTeamRows[0]) {
+        finalData['nama'] = validTeamRows[0].nama.trim();
+        finalData['jabatan'] = validTeamRows[0].jabatan.trim();
+      }
+    }
+
     try {
-      await templateService.delete(deleteConfirmId);
-      setTemplates((prev) => prev.filter((t) => t.id !== deleteConfirmId));
-      setDeleteConfirmId(null);
-    } catch {
-      // silent — template mungkin sudah dihapus
-      setDeleteConfirmId(null);
+      if (editingLetterId) {
+        await letterService.update(editingLetterId, {
+          template_id: selected.id,
+          data_surat: finalData,
+          status: 'pending_approval',
+        });
+      } else {
+        await letterService.create({ template_id: selected.id, data_surat: finalData });
+      }
+      navigate('/letters');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      const dbg = err?.response?.data?.debug;
+      setSubmitError(dbg ? `${msg} — ${dbg}` : (msg ?? 'Gagal mengirim surat.'));
     } finally {
-      setDeleting(false);
+      setSubmitting(false);
     }
   };
 
-  // bulanRomawi dan now sudah didefinisikan di atas komponen
-  const nomorSuratValue = nomorSurat || `${jenisSurat}/JUOS/${bulanRomawi[now.getMonth()]}/${now.getFullYear()}/***`;
+  const handleDeleteTemplate = async (deleteId: number) => {
+    await templateService.delete(deleteId);
+    setTemplates((prev) => prev.filter((t) => t.id !== deleteId));
+  };
 
-  // ====== STEP 1 ======
+  const nomorSuratValue =
+    nomorSurat || `${jenisSurat}/JUOS/${BULAN_ROMAWI[now.getMonth()]}/${now.getFullYear()}/***`;
+
+  // ====== STEP 1: Pilih Template ======
   if (step === 'template') {
     return (
       <PageShell step={1}>
-        {loadingList && (
-          <div className="flex items-center justify-center h-48 text-gray-400">
-            <Loader2 size={20} className="animate-spin mr-2" />
-            <span className="text-sm">Memuat template...</span>
-          </div>
-        )}
-        {!loadingList && listError && <ErrorAlert message={listError} />}
-        {!loadingList && !listError && templates.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-            <FileText size={32} className="mb-3 text-gray-300" />
-            <p className="text-sm">Belum ada template.</p>
-            <button onClick={() => navigate('/dashboard/templates/new')} className="mt-3 text-xs text-emerald-600 hover:underline">
-              Tambah template →
-            </button>
-          </div>
-        )}
-        {!loadingList && !listError && templates.length > 0 && (
-          <div className="grid grid-cols-3 gap-4">
-            {templates.map((tpl) => (
-              <div key={tpl.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-sm transition-shadow">
-                <div className="h-24 bg-gray-50 border-b border-gray-100 flex items-center justify-center relative">
-                  <FileText size={22} className="text-gray-300" />
-                  <span className="absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-100 text-purple-700">
-                    {tpl.jenis_surat}
-                  </span>
-                </div>
-                <div className="p-4">
-                  <p className="text-sm font-medium text-gray-800 truncate">{tpl.nama}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Tag size={11} className="text-gray-400" />
-                    <span className="text-xs text-gray-400">{tpl.variabel.length} variabel</span>
-                  </div>
-                  {tpl.variabel.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {tpl.variabel.slice(0, 2).map((v) => (
-                        <span key={v} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">{`{{${v}}}`}</span>
-                      ))}
-                      {tpl.variabel.length > 2 && <span className="text-[10px] text-gray-400">+{tpl.variabel.length - 2}</span>}
-                    </div>
-                  )}
-                  {/* Bug 4: tombol Gunakan + icon hapus */}
-                  <div className="flex items-center gap-2 mt-3">
-                    <button
-                      onClick={() => selectTemplate(tpl)}
-                      className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
-                    >
-                      Gunakan
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirmId(tpl.id)}
-                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      title="Hapus template"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {/* Bug 4: Konfirmasi hapus template */}
-        {deleteConfirmId !== null && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                  <Trash2 size={18} className="text-red-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">Hapus Template?</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Template dan file DOCX-nya akan dihapus permanen.
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mb-5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                Tindakan ini tidak dapat dibatalkan. Surat yang sudah dibuat menggunakan template ini tidak terpengaruh.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setDeleteConfirmId(null)}
-                  className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleDeleteTemplate}
-                  disabled={deleting}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-60 transition-colors"
-                >
-                  {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                  {deleting ? 'Menghapus...' : 'Ya, Hapus'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <TemplateSelector
+          loading={loadingList}
+          error={listError}
+          templates={templates}
+          onSelect={selectTemplate}
+          onDelete={handleDeleteTemplate}
+        />
       </PageShell>
     );
   }
 
-  // ====== STEP 2 — Bug 3: grid 2-col (50/50), hapus Isi Surat + Lampiran ======
+  // ====== STEP 2: Pengisian Form & Pratinjau ======
   return (
     <PageShell step={2}>
       <button
@@ -604,10 +404,8 @@ const handleSubmit = async () => {
         <ChevronLeft size={16} /> Ganti template
       </button>
 
-      {/* Bug 3: grid-cols-2 → form kiri 50%, pratinjau kanan 50% */}
       <div className="grid grid-cols-2 gap-6">
-
-        {/* ─── Kiri: Form ─── */}
+        {/* Kiri: Form Input */}
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-800">Informasi Surat</h2>
@@ -619,13 +417,11 @@ const handleSubmit = async () => {
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Nomor Surat <span className="text-gray-400 font-normal">(otomatis)</span>
               </label>
-              <div className="flex items-center justify-between py-2.5 bg-gray-50">
+              <div className="flex items-center justify-between py-2.5 bg-gray-50 px-3 rounded-lg">
                 <span className="text-sm font-mono text-gray-700">{nomorSuratValue}</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(nomorSuratValue);
-                  }}
+                  onClick={() => navigator.clipboard.writeText(nomorSuratValue)}
                   className="text-gray-400 bg-white border border-gray-200 rounded px-1.5 py-1.5 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                   title="Salin nomor surat"
                 >
@@ -634,356 +430,117 @@ const handleSubmit = async () => {
               </div>
             </div>
 
-{/* Field dinamis dari template.variabel */}
-{selected?.variabel.length === 0 && (
-  <p className="text-sm text-gray-400 italic">Template tidak memiliki variabel isian.</p>
-)}
+            {/* Template tanpa variabel */}
+            {selected?.variabel.length === 0 && (
+              <p className="text-sm text-gray-400 italic">
+                Template tidak memiliki variabel isian.
+              </p>
+            )}
 
-{/* Team table (SPK) — tampil jika template punya nama + jabatan */}
-{hasTeamTable && (
-  <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-      Tim Teknis
-    </label>
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      {/* Header + import CSV */}
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-100">
-        <span className="text-xs text-gray-500">{teamRows.length} anggota tim</span>
-        <div className="flex gap-2">
-          <input ref={teamCsvRef} type="file" accept=".csv" className="hidden" onChange={handleTeamCsvUpload} />
-          <button
-            type="button"
-            onClick={() => teamCsvRef.current?.click()}
-            className="flex items-center gap-1 text-xs px-2 py-1 border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors"
-          >
-            <Upload size={11} className="text-emerald-600" /> Import CSV Tim
-          </button>
-          <button
-            type="button"
-            onClick={() => setTeamRows(prev => [...prev, { nama: '', jabatan: '' }])}
-            className="text-xs px-2 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
-          >
-            + Tambah Baris
-          </button>
-        </div>
-      </div>
+            {/* Tabel Tim Teknis (SPK) */}
+            {hasTeamTable && (
+              <TeamTable
+                rows={teamRows}
+                onAddRow={addTeamRow}
+                onRemoveRow={removeTeamRow}
+                onUpdateRow={updateTeamRow}
+                onCsvUpload={handleTeamCsvUpload}
+                csvInputRef={teamCsvRef}
+              />
+            )}
 
-      {/* Tabel */}
-      {teamRows.length > 0 ? (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              <th className="px-3 py-2 text-left text-gray-500 font-medium w-8">No</th>
-              <th className="px-3 py-2 text-left text-gray-500 font-medium">Nama</th>
-              <th className="px-3 py-2 text-left text-gray-500 font-medium">Jabatan</th>
-              <th className="w-8"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {teamRows.map((row, idx) => (
-              <tr key={idx}>
-                <td className="px-3 py-1.5 text-gray-400">{idx + 1}</td>
-                <td className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={row.nama}
-                    onChange={e => setTeamRows(prev => {
-                      const next = [...prev];
-                      next[idx] = { ...next[idx], nama: e.target.value };
-                      return next;
-                    })}
-                    placeholder="Nama anggota"
-                    className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-300 text-gray-800"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={row.jabatan}
-                    onChange={e => setTeamRows(prev => {
-                      const next = [...prev];
-                      next[idx] = { ...next[idx], jabatan: e.target.value };
-                      return next;
-                    })}
-                    placeholder="Jabatan"
-                    className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-300 text-gray-800"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setTeamRows(prev => prev.filter((_, i) => i !== idx))}
-                    className="text-gray-300 hover:text-red-400"
-                  >
-                    <X size={13} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="px-4 py-6 text-center text-xs text-gray-400">
-          Import CSV atau tambah baris manual
-        </div>
-      )}
-    </div>
-  </div>
-)}
+            {/* Field Dinamis Lainnya */}
+            {selected?.variabel
+              .filter((key) => !isTeamManagedKey(key) && !isConditional(key, formData))
+              .map((key) => (
+                <DynamicFormField
+                  key={key}
+                  fieldKey={key}
+                  value={formData[key] ?? ''}
+                  formData={formData}
+                  imageFiles={imageFiles}
+                  onChange={handleFieldChange}
+                  onImageUpload={handleImageUpload}
+                  today={today}
+                />
+              ))}
 
-{/* Field biasa — skip nama/jabatan (sudah di team table), skip conditional hidden */}
-{selected?.variabel
-  .filter(key => !isTeamManagedKey(key) && !isConditional(key))
-  .map((key) => (
-    <div key={key}>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        {formatLabel(key)}
-        {key === 'npwp' && <span className="text-gray-400 font-normal ml-1">(opsional)</span>}
-      </label>
-
-      {/* Dropdown khusus */}
-      {isSelectKey(key) ? (
-  <div className="space-y-2">
-    <select
-      value={formData[key] ?? ''}
-      onChange={e => handleFieldChange(key, e.target.value)}
-      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white"
-    >
-      <option value="">Pilih {formatLabel(key).toLowerCase()}...</option>
-      {SELECT_OPTIONS[key].map(opt => (
-        <option key={opt} value={opt}>{opt}</option>
-      ))}
-    </select>
-    {key === 'status_perangkat' && formData[key] === 'Lainnya' && (
-      <input
-        type="text"
-        value={formData['lainnya'] ?? ''}
-        onChange={e => handleFieldChange('lainnya', e.target.value)}
-        placeholder="Jelaskan kondisi perangkat..."
-        className="w-full px-3 py-2.5 text-sm border border-amber-200 bg-amber-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300 text-gray-800 placeholder:text-gray-400"
-      />
-    )}
-  </div>
-) : isImageKey(key) ? (
-  /* Upload gambar untuk maps / foto lapangan */
-  <div className="space-y-2">
-    <div className="flex items-center gap-2">
-      <input
-        type="file"
-        accept="image/png,image/jpeg,image/jpg"
-        ref={el => { imageRefs.current[key] = el; }}
-        className="hidden"
-        onChange={e => handleImageUpload(key, e)}
-      />
-      <button
-        type="button"
-        onClick={() => imageRefs.current[key]?.click()}
-        className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors text-gray-600"
-      >
-        <Upload size={14} className="text-emerald-600" />
-        {imageFiles[key] ? 'Ganti Gambar' : 'Upload Gambar'}
-      </button>
-      {imageFiles[key] && (
-        <span className="text-xs text-emerald-600">✓ Gambar dipilih</span>
-      )}
-    </div>
-    {/* Preview gambar yang diupload */}
-    {imageFiles[key] && (
-      <img
-        src={`data:image/png;base64,${imageFiles[key]}`}
-        alt={key}
-        className="max-h-40 rounded-lg border border-gray-200 object-contain"
-      />
-    )}
-  </div>
-) : isMapsKey(key) ? (
-  /* Input URL maps */
-  <div className="space-y-1">
-    <input
-      type="url"
-      value={formData[key] ?? ''}
-      onChange={e => handleFieldChange(key, e.target.value)}
-      placeholder="https://www.google.com/maps/@-7.123,112.456,15z"
-      className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 text-gray-800 bg-white placeholder:text-gray-300 ${
-        formData[key] && !isValidMapsUrl(formData[key])
-          ? 'border-red-300 focus:ring-red-200'
-          : 'border-gray-200 focus:ring-emerald-300'
-      }`}
-    />
-    {formData[key] && !isValidMapsUrl(formData[key]) && (
-      <p className="text-xs text-red-500">Masukkan link Google Maps yang valid</p>
-    )}
-    {formData[key] && isValidMapsUrl(formData[key]) && (
-      <a href={formData[key]} target="_blank" rel="noopener noreferrer"
-        className="text-xs text-blue-500 hover:underline">
-        Buka di Maps →
-      </a>
-    )}
-  </div>
-) : isDateKey(key) ? (
-        /* Date picker */
-        <input
-          type="date"
-          value={formData[key] ?? today}
-          onChange={e => handleFieldChange(key, e.target.value)}
-          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white"
-        />
-      ) : (
-        /* Text input biasa */
-        <input
-          type="text"
-          value={formData[key] ?? ''}
-          onChange={e => handleFieldChange(key, e.target.value)}
-          placeholder={`Masukkan ${formatLabel(key).toLowerCase()}`}
-          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white placeholder:text-gray-300"
-        />
-      )}
-    </div>
-  ))}
-
-            {/* Jenis Surat — full width, tanggal sudah dari variabel template */}
-<div>
-  <label className="block text-sm font-medium text-gray-700 mb-1.5">Jenis Surat</label>
-  <div className="px-3 py-2.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50">
-    {selected?.jenis_surat}
-  </div>
-</div>
-
-            {/* Bug 3: Isi Surat dan Lampiran DIHAPUS — sudah ada di template DOCX */}
+            {/* Jenis Surat */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Jenis Surat</label>
+              <div className="px-3 py-2.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50">
+                {selected?.jenis_surat}
+              </div>
+            </div>
 
             {/* Alur Persetujuan */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Alur Persetujuan</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Alur Persetujuan
+              </label>
               <div className="flex items-center gap-2 px-3 py-3 border border-gray-200 rounded-lg bg-gray-50">
                 {APPROVAL_FLOW.map((s, i) => (
                   <div key={s} className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-medium flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] font-medium flex items-center justify-center shrink-0">
+                        {i + 1}
+                      </span>
                       <span className="text-xs text-gray-600 whitespace-nowrap">{s}</span>
                     </div>
-                    {i < APPROVAL_FLOW.length - 1 && <ChevronLeft size={12} className="rotate-180 text-gray-300 shrink-0" />}
+                    {i < APPROVAL_FLOW.length - 1 && (
+                      <ChevronLeft size={12} className="rotate-180 text-gray-300 shrink-0" />
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Footer */}
+          {/* Form Footer */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-            <button onClick={() => setStep('template')} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors">
+            <button
+              onClick={() => setStep('template')}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
               <ChevronLeft size={14} /> Kembali
             </button>
             <div className="flex items-center gap-3">
-              {submitError && <p className="text-xs text-red-500 max-w-[180px] text-right">{submitError}</p>}
+              {submitError && (
+                <p className="text-xs text-red-500 max-w-[200px] text-right">{submitError}</p>
+              )}
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-emerald-700 text-white rounded-xl hover:bg-emerald-800 disabled:opacity-50 transition-colors"
               >
-                {submitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {submitting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
                 {submitting ? 'Mengirim...' : 'Kirim untuk Disetujui'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* ─── Kanan: Pratinjau PDF + Import CSV ─── */}
-        <div className="flex flex-col">
-          {/* Header pratinjau */}
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Pratinjau Surat</p>
-            <div>
-              <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
-              <button
-                onClick={() => csvRef.current?.click()}
-                disabled={csvLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors disabled:opacity-50"
-              >
-                {csvLoading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} className="text-emerald-600" />}
-                {csvLoading ? 'Memproses...' : 'Import CSV'}
-              </button>
-            </div>
-          </div>
-
-          {csvFileName && <p className="text-xs text-gray-400 mb-2 truncate">File: {csvFileName}</p>}
-
-          {csvMsg && (
-            <div className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg mb-2 ${csvMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'
-              }`}>
-              {csvMsg.type === 'success' ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" /> : <AlertCircle size={13} className="shrink-0 mt-0.5" />}
-              <span>{csvMsg.text}</span>
-            </div>
-          )}
-
-          {/* ─── CSV Row Picker ─── */}
-          {showCsvPicker && csvRows.length > 0 && (
-            <div className="mb-3 border border-emerald-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between px-3 py-2 bg-emerald-50 border-b border-emerald-100">
-                <p className="text-xs font-semibold text-emerald-700">Pilih nomor data ({csvRows.length} baris)</p>
-                <button onClick={() => setShowCsvPicker(false)}>
-                  <X size={13} className="text-emerald-400 hover:text-emerald-700" />
-                </button>
-              </div>
-              <div className="max-h-44 overflow-y-auto divide-y divide-gray-100 bg-white">
-                {csvRows.map((row, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSelectCsvRow(idx)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-emerald-50 text-left transition-colors"
-                  >
-                    <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-xs font-semibold flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </span>
-                    <span className="text-xs text-gray-600 truncate flex-1">
-                      {csvHeaders.slice(0, 3).map((h) => row[h] || '—').join(' · ')}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* PDF Iframe — Bug 1: #toolbar=0&navpanes=0 sudah di-set di setPdfUrl */}
-          <div className="flex-1 border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white" style={{ height: '750px' }}>
-            {loadingPreview && (
-              <div className="flex flex-col items-center justify-center h-full py-20 text-gray-300 gap-3">
-                <Loader2 size={22} className="animate-spin" />
-                <p className="text-xs text-gray-400">Membuat pratinjau...</p>
-              </div>
-            )}
-            {!loadingPreview && previewError && (
-              <div className="p-5">
-                <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium mb-0.5">Pratinjau tidak tersedia</p>
-                    <p>{previewError}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {!loadingPreview && !previewError && !pdfUrl && (
-              <div className="flex flex-col items-center justify-center h-full py-20 text-gray-300">
-                <FileText size={28} className="mb-2" />
-                <p className="text-xs italic text-center px-4">Pratinjau PDF muncul setelah template dipilih</p>
-              </div>
-            )}
-            {pdfUrl && !loadingPreview && (
-              <iframe
-                key={pdfUrl}
-                src={pdfUrl}
-                title="Pratinjau Surat"
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-              />
-            )}
-          </div>
-          <p className="text-[10px] text-gray-400 mt-2 text-center">
-            PDF dirender via LibreOffice · Update 0.9 detik setelah input berubah
-          </p>
-        </div>
-
+        {/* Kanan: Pratinjau PDF + CSV Importer */}
+        <PdfPreviewPane
+          pdfUrl={pdfUrl}
+          loadingPreview={loadingPreview}
+          previewError={previewError}
+          csvFileName={csvFileName}
+          csvLoading={csvLoading}
+          csvMsg={csvMsg}
+          csvRows={csvRows}
+          csvHeaders={csvHeaders}
+          showCsvPicker={showCsvPicker}
+          csvInputRef={csvRef}
+          onCsvUpload={handleCsvUpload}
+          onSelectCsvRow={handleSelectCsvRow}
+          onCloseCsvPicker={() => setShowCsvPicker(false)}
+        />
       </div>
     </PageShell>
   );
 }
-

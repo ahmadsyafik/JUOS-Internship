@@ -3,14 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Template;
+use App\Services\Template\DocxTemplateParserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Storage;
-use ZipArchive;
 
 class TemplateController extends Controller
 {
+    public function __construct(
+        private readonly DocxTemplateParserService $parserService
+    ) {}
+
     /**
      * GET /api/templates
      */
@@ -61,7 +65,7 @@ class TemplateController extends Controller
             $absolutePath = Storage::disk('public')->path($pathDocx);
 
             try {
-                [$variabel, $rawContent] = $this->extractFromDocx($absolutePath);
+                [$variabel, $rawContent] = $this->parserService->parse($absolutePath);
             } catch (\Throwable $e) {
                 // Hapus file yang sudah ter-upload kalau extract gagal
                 Storage::disk('public')->delete($pathDocx);
@@ -114,47 +118,6 @@ class TemplateController extends Controller
     }
 
     /**
-     * Buka .docx (ZIP), baca word/document.xml,
-     * gabung semua <w:t> node (MS Word sering memecah satu kata jadi beberapa node),
-     * lalu extract {{variabel}}.
-     *
-     * Return: [variabel_array, raw_text_string]
-     */
-    private function extractFromDocx(string $path): array
-    {
-        $zip = new ZipArchive();
-
-        if ($zip->open($path) !== true) {
-            return [[], ''];
-        }
-
-        $xml = $zip->getFromName('word/document.xml');
-        $zip->close();
-
-        if ($xml === false) {
-            return [[], ''];
-        }
-
-        // Gabung semua teks di dalam tag <w:t>
-        preg_match_all('/<w:t[^>]*>(.*?)<\/w:t>/s', $xml, $matches);
-        $rawContent = html_entity_decode(implode('', $matches[1]), ENT_QUOTES | ENT_XML1);
-
-        // Cleanup: hapus Word-specific XML tags yang mungkin tertinggal
-        $rawContent = preg_replace('/<w:[^>]*>/i', '', $rawContent);
-        $rawContent = preg_replace('/<\/w:[^>]*>/i', '', $rawContent);
-
-        // Bersihkan whitespace berlebih
-        $rawContent = preg_replace('/[ \t]+/', ' ', $rawContent);
-        $rawContent = preg_replace('/\n\s*\n/', "\n", $rawContent); // Bersihkan baris kosong
-        $rawContent = trim($rawContent);
-
-        // Extract {{nama_variabel}} dari raw text
-        preg_match_all('/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/', $rawContent, $varMatches);
-        $variabel = $this->filterReservedVars(array_values(array_unique($varMatches[1])));
-
-        return [$variabel, $rawContent];
-    }
-    /**
      * POST /api/templates/preview-upload
      * Upload DOCX sementara → konversi ke PDF via LibreOffice → return PDF URL + variabel.
      * Dipakai oleh new.tsx untuk preview sebelum template disimpan ke DB.
@@ -170,34 +133,17 @@ class TemplateController extends Controller
             $pathDocx = $request->file('file_docx')->store('templates/temp', 'public');
             $absolutePath = Storage::disk('public')->path($pathDocx);
 
-            // Extract variabel dari XML di dalam DOCX (ZipArchive inline)
-            $variabel = [];
-            $zip = new \ZipArchive();
-            if ($zip->open($absolutePath) !== true) {
+            // Extract variabel dari XML di dalam DOCX via DocxTemplateParserService
+            try {
+                [$variabel] = $this->parserService->parse($absolutePath);
+            } catch (\Throwable $e) {
                 Storage::disk('public')->delete($pathDocx);
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Gagal membuka file DOCX. Pastikan file tidak rusak.',
+                    'message' => $e->getMessage(),
                 ], 422);
             }
-
-            $xml = $zip->getFromName('word/document.xml');
-            $zip->close();
-
-            if ($xml === false) {
-                Storage::disk('public')->delete($pathDocx);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'File DOCX tidak valid atau tidak berisi document.xml.',
-                ], 422);
-            }
-
-            preg_match_all('/<w:t[^>]*>(.*?)<\/w:t>/s', $xml, $matches);
-            $raw = html_entity_decode(implode('', $matches[1]), ENT_QUOTES | ENT_XML1);
-            preg_match_all('/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/', $raw, $varMatches);
-            $variabel = $this->filterReservedVars(array_values(array_unique($varMatches[1])));
 
             // Konversi DOCX → PDF via LibreOffice
             $pdfUrl = null;
@@ -358,25 +304,5 @@ class TemplateController extends Controller
             'message' => 'Template berhasil dihapus.',
         ]);
     }
-    /**
-     * Variabel yang dikelola sistem, bukan user input.
-     * Tidak boleh muncul sebagai form field di frontend.
-     * Akan diisi saat approval (tanda tangan) atau secara otomatis.
-     */
-    // nomor_surat ditambahkan — diisi otomatis backend, tidak boleh muncul sebagai form input
-private const RESERVED_VARS = [
-    'tanda_tangan', 'ttd', 'ttd_direktur', 'signature',
-    'nomor_surat',
-    'tim_nama_json', 'tim_jabatan_json',  // ← tambah ini
-    'start_maps_img', 'end_maps_img',
-    'no',      // ← tambah ini
-];
 
-    private function filterReservedVars(array $variabel): array
-    {
-        return array_values(array_filter(
-            $variabel,
-            fn($v) => !in_array(strtolower($v), self::RESERVED_VARS)
-        ));
-    }
 }
