@@ -16,7 +16,7 @@ class StoreLetterRequest extends FormRequest
         return [
             'template_id' => ['required', 'integer', 'exists:templates,id'],
             'data_surat'  => ['required', 'array'],
-            'data_surat.*'=> ['nullable', 'string', 'max:1000'],
+            'data_surat.*'=> ['nullable', 'string'],
         ];
     }
 

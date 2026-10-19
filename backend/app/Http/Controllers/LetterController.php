@@ -172,6 +172,40 @@ class LetterController extends Controller
     }
 
     /**
+ * DELETE /api/letters/{letter}
+ * Hapus surat dan file DOCX/PDF terkait
+ */
+public function destroy(Letter $letter): JsonResponse
+{
+    $user = request()->user();
+    if (!$user) {
+        return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
+    }
+
+    // Hanya pembuat atau direktur yang bisa hapus
+    if ($letter->created_by !== $user->id && $user->role !== 'direktur') {
+        return response()->json(['success' => false, 'message' => 'Tidak memiliki izin menghapus surat ini.'], 403);
+    }
+
+    try {
+        // Hapus file DOCX
+        if ($letter->path_docx && Storage::disk('public')->exists($letter->path_docx)) {
+            Storage::disk('public')->delete($letter->path_docx);
+        }
+        // Hapus file PDF jika ada
+        if ($letter->path_pdf && Storage::disk('public')->exists($letter->path_pdf)) {
+            Storage::disk('public')->delete($letter->path_pdf);
+        }
+
+        $letter->delete();
+
+        return response()->json(['success' => true, 'message' => 'Surat berhasil dihapus.']);
+    } catch (\Exception $e) {
+        Log::error('Delete letter failed', ['letter_id' => $letter->id, 'error' => $e->getMessage()]);
+        return response()->json(['success' => false, 'message' => 'Gagal menghapus surat.'], 500);
+    }
+}
+    /**
      * GET /api/letters/{letter}/pdf-view (tanpa auth)
      * Bug 2 fix: serve PDF letter untuk ditampilkan di iframe pada detail page.
      * Konversi DOCX → PDF via LibreOffice jika belum ada.

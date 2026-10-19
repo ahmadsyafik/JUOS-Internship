@@ -155,42 +155,40 @@ export default function TemplatesPage() {
       )}
 
       {/* Konfirmasi hapus */}
-      {deleteConfirmId !== null && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                <Trash2 size={18} className="text-red-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Hapus Template?</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  File DOCX dan data template akan dihapus permanen.
-                </p>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 mb-5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-              Tindakan ini tidak dapat dibatalkan. Surat yang sudah dibuat tidak terpengaruh.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-60 transition-colors"
-              >
-                {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                {deleting ? 'Menghapus...' : 'Ya, Hapus'}
-              </button>
-            </div>
-          </div>
+{deleteConfirmId !== null && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+          <Trash2 size={18} className="text-red-500" />
         </div>
-      )}
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Hapus Surat?</p>
+          <p className="text-xs text-gray-400 mt-0.5">File DOCX dan PDF akan dihapus permanen.</p>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 mb-5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        Tindakan ini tidak dapat dibatalkan.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => setDeleteConfirmId(null)}
+          className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50"
+        >
+          Batal
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-60"
+        >
+          {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+          {deleting ? 'Menghapus...' : 'Ya, Hapus'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </Base>
   );
 }

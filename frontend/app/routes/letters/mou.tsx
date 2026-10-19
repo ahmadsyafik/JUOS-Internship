@@ -68,7 +68,7 @@ function formatLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export default function MouTwoPage() {
+export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: string } = {}) {
   const navigate  = useNavigate();
   const location  = useLocation();
   const [searchParams] = useSearchParams();
@@ -76,13 +76,26 @@ export default function MouTwoPage() {
   // Definisi di sini agar bisa dipakai di dalam useEffect tanpa hoisting error
   const bulanRomawi = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
   const now   = new Date();
-  const today = now.toISOString().split('T')[0]; // format YYYY-MM-DD untuk input date
+  const today = now.toISOString().split('T')[0];
+  
+  // ─── State khusus fitur baru ──────────────────────────────────────────────
+// Team table (SPK)
+const [teamRows, setTeamRows] = useState<{ nama: string; jabatan: string }[]>([]);
+const teamCsvRef = useRef<HTMLInputElement>(null);
 
-  // Deteksi jenis surat dari URL — satu komponen untuk semua jenis
-  const jenisSurat = location.pathname.includes('/psb')         ? 'PSB'
-    : location.pathname.includes('/surat-jalan') ? 'SURAT JALAN'
-    : location.pathname.includes('/pkwt')        ? 'PKWT'
-    : 'MOU';
+// Gambar maps — upload manual (base64 untuk dikirim ke backend)
+const [imageFiles, setImageFiles] = useState<Record<string, string>>({});
+const imageRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+// Prioritas: prop > path > default
+// Evaluasi fresh setiap render — tidak ada stale closure
+const path = location.pathname;
+const jenisSurat: string =
+  forcedJenisSurat                         ? forcedJenisSurat   :
+  path.includes('/surat-jalan')            ? 'SURAT JALAN'      :
+  path.includes('/pkwt')                   ? 'PKWT'             :
+  path.includes('/psb')                    ? 'PSB'              :
+  'MOU';
 
   // Sub-tipe yang masuk kategori PSB (template lama yang sudah telanjur upload sebagai KONTRAK/BAA)
   const PSB_SUBTYPES = ['PSB', 'KONTRAK', 'BAA'];
@@ -121,11 +134,83 @@ export default function MouTwoPage() {
   const [tanggalSurat, setTanggalSurat] = useState(today); 
   const editingLetterId = searchParams.get('letter_id') ? Number(searchParams.get('letter_id')) : null;
 
- useEffect(() => {
+const hasTeamTable = Boolean(
+  selected?.variabel.includes('nama') &&
+  selected?.variabel.includes('jabatan')
+);
+
+const SELECT_OPTIONS: Record<string, string[]> = {
+  status_perangkat: ['Belum dikembalikan', 'Hilang', 'Rusak', 'Lainnya'],
+};
+
+const isSelectKey     = (key: string) => key in SELECT_OPTIONS;
+const isConditional   = (key: string) =>
+  key === 'lainnya' && formData['status_perangkat'] !== 'Lainnya';
+const isTeamManagedKey = (key: string) =>
+  hasTeamTable && (key === 'nama' || key === 'jabatan');
+const isDateKey       = (key: string) =>
+  ['tanggal', 'tgl', 'date'].some(k => key.toLowerCase().includes(k));
+
+// Image upload — ganti auto-screenshot dengan upload manual
+const isImageKey      = (key: string) =>
+  key.toLowerCase().includes('_img') || key.toLowerCase().includes('_gambar');
+
+// URL maps — validasi format (dipakai untuk start_lokasi, end_lokasi yang masih berupa link)
+const isMapsKey       = (key: string) =>
+  ['start_lokasi', 'end_lokasi'].includes(key);
+const isValidMapsUrl  = (url: string) =>
+  !url ||
+  /^https?:\/\/(www\.)?google\.com\/maps/.test(url) ||
+  /^https?:\/\/maps\.google\.com/.test(url) ||
+  /^https?:\/\/maps\.app\.goo\.gl/.test(url);
+
+  // Field yang dikelola team table, skip dari form input biasa
+
+const handleTeamCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  const { headers, rows } = parseCsvAllRows(text);
+  // Cari kolom nama dan jabatan (case-insensitive)
+  const namaCol    = headers.find(h => h.toLowerCase().includes('nama')) ?? headers[0];
+  const jabatanCol = headers.find(h => h.toLowerCase().includes('jabatan')) ?? headers[1];
+
+  const team = rows.map(row => ({
+    nama:    row[namaCol]    ?? '',
+    jabatan: row[jabatanCol] ?? '',
+  })).filter(r => r.nama || r.jabatan);
+
+  setTeamRows(team);
+  if (teamCsvRef.current) teamCsvRef.current.value = '';
+};
+
+const handleImageUpload = async (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const base64 = (reader.result as string).split(',')[1];
+    setImageFiles(prev => ({ ...prev, [key]: base64 }));
+    handleFieldChange(key, base64);
+  };
+  reader.readAsDataURL(file);
+};
+
+useEffect(() => {
+  setStep('template');
+  setSelected(null);
+  setFormData({});
+  setPdfUrl(null);
+  setTeamRows([]);
+  setCsvMsg(null);
+
+  // Synchronous — tidak ada closure issue, jenisSurat sudah benar di sini
+  setNomorSurat(`${jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/***`);
+
+  // Async call — hanya ambil ID, tidak perlu set nomorSurat lagi
   letterService.getAll().then((res) => {
     const firstId = res.data.data?.[0]?.id;
     if (firstId != null) setId(firstId);
-    setNomorSurat(`${jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/***`);
   });
 
   setTemplates([]);
@@ -141,7 +226,8 @@ export default function MouTwoPage() {
     })
     .catch(() => setListError('Gagal memuat daftar template.'))
     .finally(() => setLoadingList(false));
-}, [jenisSurat]);   // ← re-run setiap kali jenis surat berubah (pindah route)
+
+}, [jenisSurat]);  // ← re-run setiap kali jenis surat berubah (pindah route)
   // Bug 1 fix: jika ada letter_id di URL → load data letter untuk edit/resubmit
   useEffect(() => {
     const lid = searchParams.get('letter_id');
@@ -154,7 +240,7 @@ export default function MouTwoPage() {
 
       setSelected(tpl);
       setFormData(Object.fromEntries(tpl.variabel.map((v) => [v, ''])));
-      setNomorSurat(`MOU/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : 0}`);
+      setNomorSurat(`{jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : 0}`);
       setCsvMsg(null);
       setCsvFileName('');
       setCsvRows([]);
@@ -195,9 +281,15 @@ export default function MouTwoPage() {
       setLoadingPreview(true);
       setPreviewError('');
       try {
+        const previewData = { ...formData };
+        if (hasTeamTable && teamRows.length > 0) {
+        previewData['tim_nama_json']    = JSON.stringify(teamRows.map(r => r.nama));
+        previewData['tim_jabatan_json'] = JSON.stringify(teamRows.map(r => r.jabatan));
+        }
+
         const res = await letterService.generatePreview({
           template_id: selected.id,
-          data_surat: formData,
+          data_surat: previewData,
         });
         if (res.data?.success) {
           // Bug 1 fix: tambah #toolbar=0&navpanes=0 agar sidebar PDF viewer tidak muncul
@@ -222,7 +314,7 @@ export default function MouTwoPage() {
 });
     setFormData(initial);
     if (!editingLetterId) {
-      setNomorSurat(`MOU/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : '001'}`);
+      setNomorSurat(`${jenisSurat}/JUOS/${bulanRomawi[new Date().getMonth()]}/${new Date().getFullYear()}/${id !== null ? id + 1 : '001'}`);
     }
     setCsvMsg(null);
     setCsvFileName('');
@@ -289,43 +381,58 @@ export default function MouTwoPage() {
     // Bug 2 fix: JANGAN tutup picker — user bisa pilih baris lain tanpa harus buka ulang
   };
 
-  const handleSubmit = async () => {
-    if (!selected) return;
-   // Field yang tidak wajib diisi — cukup biarkan kosong
-const OPTIONAL_FIELDS = ['npwp'];
+const handleSubmit = async () => {
+  if (!selected) return;
 
-const empty = selected.variabel.filter((k) =>
-  !OPTIONAL_FIELDS.some(opt => k.toLowerCase().includes(opt)) &&
-  !formData[k]?.trim()
-);
-if (empty.length > 0) {
-  setSubmitError(`Field belum diisi: ${empty.map(formatLabel).join(', ')}`);
-  return;
-}
+  // Tim teknis: skip nama/jabatan/no dari validasi jika teamRows sudah diisi
+  const TEAM_KEYS = ['nama', 'jabatan', 'no'];
+  const teamHasData = teamRows.length > 0 &&
+    selected.variabel.some(v => TEAM_KEYS.includes(v));
 
-    setSubmitting(true);
-    setSubmitError('');
+  const OPTIONAL_FIELDS = ['npwp', 'lainnya'];
 
-    try {
-      if (editingLetterId) {
-        await letterService.update(editingLetterId, {
-          template_id: selected.id,
-          data_surat: formData,
-          status: 'pending_approval',
-        });
-      } else {
-        await letterService.create({ template_id: selected.id, data_surat: formData });
-      }
+  const empty = selected.variabel.filter((k) => {
+    if (teamHasData && TEAM_KEYS.includes(k)) return false;
+    if (OPTIONAL_FIELDS.some((opt: string) => k.toLowerCase().includes(opt))) return false;
+    if (isConditional(k)) return false;
+    return !formData[k]?.trim();
+  });
 
-      navigate('/letters');
-    } catch (err: any) {
-      const msg = err?.response?.data?.message;
-      const dbg = err?.response?.data?.debug;
-      setSubmitError(dbg ? `${msg} — ${dbg}` : (msg ?? 'Gagal mengirim surat.'));
-    } finally {
-      setSubmitting(false);
+  if (empty.length > 0) {
+    setSubmitError(`Field belum diisi: ${empty.map(formatLabel).join(', ')}`);
+    return;
+  }
+
+  setSubmitting(true);
+  setSubmitError('');
+
+  // Gabungkan team data — pakai teamHasData bukan hasTeamTable
+  const finalData = { ...formData };
+  if (teamHasData) {
+    finalData['tim_nama_json']    = JSON.stringify(teamRows.map(r => r.nama));
+    finalData['tim_jabatan_json'] = JSON.stringify(teamRows.map(r => r.jabatan));
+  }
+
+  try {
+    if (editingLetterId) {
+      await letterService.update(editingLetterId, {
+        template_id: selected.id,
+        data_surat: finalData,
+        status: 'pending_approval',
+      });
+    } else {
+      await letterService.create({ template_id: selected.id, data_surat: finalData });
     }
-  };
+    navigate('/letters');
+  } catch (err: any) {
+    const msg = err?.response?.data?.message;
+    const dbg = err?.response?.data?.debug;
+    setSubmitError(dbg ? `${msg} — ${dbg}` : (msg ?? 'Gagal mengirim surat.'));
+  } finally {
+    setSubmitting(false);
+  }
+};
+
   const handleDeleteTemplate = async () => {
     if (!deleteConfirmId) return;
     setDeleting(true);
@@ -490,23 +597,212 @@ if (empty.length > 0) {
               </div>
             </div>
 
-            {/* Field dinamis dari template.variabel SAJA */}
-            {selected?.variabel.length === 0 && (
-              <p className="text-sm text-gray-400 italic">Template tidak memiliki variabel isian.</p>
-            )}
+{/* Field dinamis dari template.variabel */}
+{selected?.variabel.length === 0 && (
+  <p className="text-sm text-gray-400 italic">Template tidak memiliki variabel isian.</p>
+)}
 
-            {selected?.variabel.map((key) => (
-  <div key={key}>
-    <label className="block text-sm font-medium text-gray-700 mb-1.5">{formatLabel(key)}</label>
-    <input
-      type={isDateKey(key) ? 'date' : 'text'}
-      value={formData[key] ?? (isDateKey(key) ? today : '')}
-      onChange={(e) => handleFieldChange(key, e.target.value)}
-      placeholder={isDateKey(key) ? undefined : `Masukkan ${formatLabel(key).toLowerCase()}`}
-      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white placeholder:text-gray-300"
-    />
+{/* Team table (SPK) — tampil jika template punya nama + jabatan */}
+{hasTeamTable && (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+      Tim Teknis
+    </label>
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      {/* Header + import CSV */}
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-100">
+        <span className="text-xs text-gray-500">{teamRows.length} anggota tim</span>
+        <div className="flex gap-2">
+          <input ref={teamCsvRef} type="file" accept=".csv" className="hidden" onChange={handleTeamCsvUpload} />
+          <button
+            type="button"
+            onClick={() => teamCsvRef.current?.click()}
+            className="flex items-center gap-1 text-xs px-2 py-1 border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors"
+          >
+            <Upload size={11} className="text-emerald-600" /> Import CSV Tim
+          </button>
+          <button
+            type="button"
+            onClick={() => setTeamRows(prev => [...prev, { nama: '', jabatan: '' }])}
+            className="text-xs px-2 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+          >
+            + Tambah Baris
+          </button>
+        </div>
+      </div>
+
+      {/* Tabel */}
+      {teamRows.length > 0 ? (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="px-3 py-2 text-left text-gray-500 font-medium w-8">No</th>
+              <th className="px-3 py-2 text-left text-gray-500 font-medium">Nama</th>
+              <th className="px-3 py-2 text-left text-gray-500 font-medium">Jabatan</th>
+              <th className="w-8"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {teamRows.map((row, idx) => (
+              <tr key={idx}>
+                <td className="px-3 py-1.5 text-gray-400">{idx + 1}</td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={row.nama}
+                    onChange={e => setTeamRows(prev => {
+                      const next = [...prev];
+                      next[idx] = { ...next[idx], nama: e.target.value };
+                      return next;
+                    })}
+                    placeholder="Nama anggota"
+                    className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-300 text-gray-800"
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="text"
+                    value={row.jabatan}
+                    onChange={e => setTeamRows(prev => {
+                      const next = [...prev];
+                      next[idx] = { ...next[idx], jabatan: e.target.value };
+                      return next;
+                    })}
+                    placeholder="Jabatan"
+                    className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-300 text-gray-800"
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setTeamRows(prev => prev.filter((_, i) => i !== idx))}
+                    className="text-gray-300 hover:text-red-400"
+                  >
+                    <X size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="px-4 py-6 text-center text-xs text-gray-400">
+          Import CSV atau tambah baris manual
+        </div>
+      )}
+    </div>
   </div>
-))}
+)}
+
+{/* Field biasa — skip nama/jabatan (sudah di team table), skip conditional hidden */}
+{selected?.variabel
+  .filter(key => !isTeamManagedKey(key) && !isConditional(key))
+  .map((key) => (
+    <div key={key}>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        {formatLabel(key)}
+        {key === 'npwp' && <span className="text-gray-400 font-normal ml-1">(opsional)</span>}
+      </label>
+
+      {/* Dropdown khusus */}
+      {isSelectKey(key) ? (
+  <div className="space-y-2">
+    <select
+      value={formData[key] ?? ''}
+      onChange={e => handleFieldChange(key, e.target.value)}
+      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white"
+    >
+      <option value="">Pilih {formatLabel(key).toLowerCase()}...</option>
+      {SELECT_OPTIONS[key].map(opt => (
+        <option key={opt} value={opt}>{opt}</option>
+      ))}
+    </select>
+    {key === 'status_perangkat' && formData[key] === 'Lainnya' && (
+      <input
+        type="text"
+        value={formData['lainnya'] ?? ''}
+        onChange={e => handleFieldChange('lainnya', e.target.value)}
+        placeholder="Jelaskan kondisi perangkat..."
+        className="w-full px-3 py-2.5 text-sm border border-amber-200 bg-amber-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300 text-gray-800 placeholder:text-gray-400"
+      />
+    )}
+  </div>
+) : isImageKey(key) ? (
+  /* Upload gambar untuk maps / foto lapangan */
+  <div className="space-y-2">
+    <div className="flex items-center gap-2">
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/jpg"
+        ref={el => { imageRefs.current[key] = el; }}
+        className="hidden"
+        onChange={e => handleImageUpload(key, e)}
+      />
+      <button
+        type="button"
+        onClick={() => imageRefs.current[key]?.click()}
+        className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:border-emerald-300 transition-colors text-gray-600"
+      >
+        <Upload size={14} className="text-emerald-600" />
+        {imageFiles[key] ? 'Ganti Gambar' : 'Upload Gambar'}
+      </button>
+      {imageFiles[key] && (
+        <span className="text-xs text-emerald-600">✓ Gambar dipilih</span>
+      )}
+    </div>
+    {/* Preview gambar yang diupload */}
+    {imageFiles[key] && (
+      <img
+        src={`data:image/png;base64,${imageFiles[key]}`}
+        alt={key}
+        className="max-h-40 rounded-lg border border-gray-200 object-contain"
+      />
+    )}
+  </div>
+) : isMapsKey(key) ? (
+  /* Input URL maps */
+  <div className="space-y-1">
+    <input
+      type="url"
+      value={formData[key] ?? ''}
+      onChange={e => handleFieldChange(key, e.target.value)}
+      placeholder="https://www.google.com/maps/@-7.123,112.456,15z"
+      className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 text-gray-800 bg-white placeholder:text-gray-300 ${
+        formData[key] && !isValidMapsUrl(formData[key])
+          ? 'border-red-300 focus:ring-red-200'
+          : 'border-gray-200 focus:ring-emerald-300'
+      }`}
+    />
+    {formData[key] && !isValidMapsUrl(formData[key]) && (
+      <p className="text-xs text-red-500">Masukkan link Google Maps yang valid</p>
+    )}
+    {formData[key] && isValidMapsUrl(formData[key]) && (
+      <a href={formData[key]} target="_blank" rel="noopener noreferrer"
+        className="text-xs text-blue-500 hover:underline">
+        Buka di Maps →
+      </a>
+    )}
+  </div>
+) : isDateKey(key) ? (
+        /* Date picker */
+        <input
+          type="date"
+          value={formData[key] ?? today}
+          onChange={e => handleFieldChange(key, e.target.value)}
+          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white"
+        />
+      ) : (
+        /* Text input biasa */
+        <input
+          type="text"
+          value={formData[key] ?? ''}
+          onChange={e => handleFieldChange(key, e.target.value)}
+          placeholder={`Masukkan ${formatLabel(key).toLowerCase()}`}
+          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 text-gray-800 bg-white placeholder:text-gray-300"
+        />
+      )}
+    </div>
+  ))}
 
             {/* Jenis Surat — full width, tanggal sudah dari variabel template */}
 <div>

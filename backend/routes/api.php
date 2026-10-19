@@ -23,7 +23,7 @@ Route::get('/letters', [LetterController::class, 'index']);
 Route::post('/letters/preview', [PreviewController::class, 'generate']);
 // Bug 2+5: serve PDF surat untuk iframe di detail page (tanpa auth agar iframe bisa load)
 Route::get('/letters/{letter}/pdf-view', [LetterController::class, 'pdfView']);
-
+Route::delete('/letters/{letter}', [LetterController::class, 'destroy']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/letters/{letter}', [LetterController::class, 'show']);
     Route::get('/letters/{letter}/export', [LetterController::class, 'export']);

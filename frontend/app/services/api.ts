@@ -41,6 +41,7 @@ export const letterService = {
   approve:   (id: number, catatan?: string) => api.patch(`/letters/${id}/approve`, { catatan }),
   reject: (id: number, catatan: string) => api.patch(`/letters/${id}/reject`, { catatan }),
   revise: (id: number, catatan: string) => api.patch(`/letters/${id}/revise`, { catatan }),
+  delete: (id: number) => api.delete(`/letters/${id}`),
   exportDoc: (id: number, format: 'docx' | 'pdf') =>
     api.get(`/letters/${id}/export`, { params: { format }, responseType: 'blob' }),
   syncCsv:   (file: File) => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Eye, CheckCircle, XCircle, Clock, SquarePen } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, Clock, SquarePen, Trash2 } from 'lucide-react';
 import { letterService } from '../../services/api';
 import type { Letter } from '../../types';
 import { Base, ScreenHeader } from '~/components/ui';
@@ -29,6 +29,22 @@ export default function IndexLetterPage() {
   const [error, setError] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleting, setDeleting]               = useState(false);
+
+const handleDeleteLetter = async () => {
+  if (!deleteConfirmId) return;
+  setDeleting(true);
+  try {
+    await letterService.delete(deleteConfirmId);
+    setLetters(prev => prev.filter(l => l.id !== deleteConfirmId));
+    setDeleteConfirmId(null);
+  } catch {
+    setDeleteConfirmId(null);
+  } finally {
+    setDeleting(false);
+  }
+};
 
   const fetchLetters = () => {
     setLoading(true);
@@ -138,13 +154,13 @@ export default function IndexLetterPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/letters/${letter.id}`)}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-emerald-300 hover:bg-emerald-50 transition"
-                    >
-                      <Eye size={16} /> Detail
-                    </button>
+                   <button
+  onClick={() => setDeleteConfirmId(letter.id)}
+  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+  title="Hapus surat"
+>
+  <Trash2 size={14} />
+</button>
                     {letter.status === 'approved' && (
                       <button
                         type="button"
