@@ -1,4 +1,4 @@
-import Base from '~/components/ui/Base';
+import { Base } from '~/components/ui/Base';
 
 export default function SyncPage() {
   return (

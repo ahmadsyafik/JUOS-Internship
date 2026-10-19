@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router';
 import {
   ChevronLeft, Loader2, FileText, Upload, Tag,
@@ -259,6 +259,28 @@ useEffect(() => {
         setSelected(letter.template ?? null);
         setFormData(letter.data_surat ?? {});
         setNomorSurat(letter.nomor_surat || '');
+        if (letter.data_surat?.tim_nama_json && letter.data_surat?.tim_jabatan_json) {
+          try {
+            const names = typeof letter.data_surat.tim_nama_json === 'string'
+              ? JSON.parse(letter.data_surat.tim_nama_json)
+              : letter.data_surat.tim_nama_json;
+            const jabatans = typeof letter.data_surat.tim_jabatan_json === 'string'
+              ? JSON.parse(letter.data_surat.tim_jabatan_json)
+              : letter.data_surat.tim_jabatan_json;
+            if (Array.isArray(names) && Array.isArray(jabatans)) {
+              const count = Math.min(names.length, jabatans.length);
+              const rows = [];
+              for (let i = 0; i < count; i++) {
+                rows.push({ nama: names[i] || '', jabatan: jabatans[i] || '' });
+              }
+              if (rows.length > 0) {
+                setTeamRows(rows);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse team rows', e);
+          }
+        }
         setCsvMsg(null);
         setCsvFileName('');
         setCsvRows([]);
@@ -283,8 +305,13 @@ useEffect(() => {
       try {
         const previewData = { ...formData };
         if (hasTeamTable && teamRows.length > 0) {
-        previewData['tim_nama_json']    = JSON.stringify(teamRows.map(r => r.nama));
-        previewData['tim_jabatan_json'] = JSON.stringify(teamRows.map(r => r.jabatan));
+          const validTeamRows = teamRows.filter(r => r.nama.trim() || r.jabatan.trim());
+          if (validTeamRows.length > 0) {
+            previewData['tim_nama_json']    = JSON.stringify(validTeamRows.map(r => r.nama.trim()));
+            previewData['tim_jabatan_json'] = JSON.stringify(validTeamRows.map(r => r.jabatan.trim()));
+            previewData['nama'] = validTeamRows[0].nama.trim();
+            previewData['jabatan'] = validTeamRows[0].jabatan.trim();
+          }
         }
 
         const res = await letterService.generatePreview({
@@ -384,10 +411,16 @@ useEffect(() => {
 const handleSubmit = async () => {
   if (!selected) return;
 
+  const validTeamRows = teamRows.filter(r => r.nama.trim() || r.jabatan.trim());
+  const teamHasData = validTeamRows.length > 0;
+
+  if (hasTeamTable && !teamHasData) {
+    setSubmitError('Tim teknis wajib diisi minimal 1 anggota.');
+    return;
+  }
+
   // Tim teknis: skip nama/jabatan/no dari validasi jika teamRows sudah diisi
   const TEAM_KEYS = ['nama', 'jabatan', 'no'];
-  const teamHasData = teamRows.length > 0 &&
-    selected.variabel.some(v => TEAM_KEYS.includes(v));
 
   const OPTIONAL_FIELDS = ['npwp', 'lainnya'];
 
@@ -409,8 +442,12 @@ const handleSubmit = async () => {
   // Gabungkan team data — pakai teamHasData bukan hasTeamTable
   const finalData = { ...formData };
   if (teamHasData) {
-    finalData['tim_nama_json']    = JSON.stringify(teamRows.map(r => r.nama));
-    finalData['tim_jabatan_json'] = JSON.stringify(teamRows.map(r => r.jabatan));
+    finalData['tim_nama_json']    = JSON.stringify(validTeamRows.map(r => r.nama.trim()));
+    finalData['tim_jabatan_json'] = JSON.stringify(validTeamRows.map(r => r.jabatan.trim()));
+    if (validTeamRows[0]) {
+      finalData['nama'] = validTeamRows[0].nama.trim();
+      finalData['jabatan'] = validTeamRows[0].jabatan.trim();
+    }
   }
 
   try {

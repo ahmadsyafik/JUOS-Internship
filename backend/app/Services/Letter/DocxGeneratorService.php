@@ -30,8 +30,8 @@ $reservedKeys = ['tanda_tangan', 'ttd', 'ttd_direktur', 'signature'];
 
 // Handle tim teknis (cloneRow untuk auto-rows tabel SPK)
 if (isset($data['tim_nama_json']) && isset($data['tim_jabatan_json'])) {
-    $namaList    = json_decode($data['tim_nama_json'], true) ?? [];
-    $jabatanList = json_decode($data['tim_jabatan_json'], true) ?? [];
+    $namaList    = is_array($data['tim_nama_json']) ? $data['tim_nama_json'] : (json_decode($data['tim_nama_json'], true) ?? []);
+    $jabatanList = is_array($data['tim_jabatan_json']) ? $data['tim_jabatan_json'] : (json_decode($data['tim_jabatan_json'], true) ?? []);
     $count       = min(count($namaList), count($jabatanList));
 
     if ($count > 0) {
@@ -46,7 +46,7 @@ if (isset($data['tim_nama_json']) && isset($data['tim_jabatan_json'])) {
             Log::warning('cloneRow failed, fallback to plain value', ['error' => $e->getMessage()]);
         }
     }
-    unset($data['tim_nama_json'], $data['tim_jabatan_json']);
+    unset($data['tim_nama_json'], $data['tim_jabatan_json'], $data['nama'], $data['jabatan'], $data['no']);
 }
 
 // Handle base64 image fields (_img / _gambar)

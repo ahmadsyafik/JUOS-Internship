@@ -48,6 +48,63 @@ function ApprovalStep({
   );
 }
 
+function renderDataValue(key: string, val: any) {
+  if (val === null || val === undefined || val === '') return '—';
+  const strVal = String(val).trim();
+
+  // 1. Gambar Base64
+  if (key.endsWith('_img') || key.endsWith('_gambar')) {
+    const src = strVal.startsWith('data:') ? strVal : `data:image/png;base64,${strVal}`;
+    return (
+      <img
+        src={src}
+        alt={key}
+        className="max-h-28 rounded-lg border border-gray-100 object-contain mt-1"
+      />
+    );
+  }
+
+  // 2. JSON array string (misal: tim_nama_json atau tim_jabatan_json)
+  if (strVal.startsWith('[') && strVal.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(strVal);
+      if (Array.isArray(parsed)) {
+        return (
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {parsed.map((item, idx) => (
+              <span
+                key={idx}
+                className="inline-block bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[11px] break-all"
+              >
+                {String(item)}
+              </span>
+            ))}
+          </div>
+        );
+      }
+    } catch {
+      // fallback jika bukan JSON valid
+    }
+  }
+
+  // 3. Link URL (misal: link Google Maps)
+  if (/^https?:\/\//i.test(strVal)) {
+    return (
+      <a
+        href={strVal}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-emerald-600 hover:text-emerald-700 hover:underline break-all"
+      >
+        {strVal}
+      </a>
+    );
+  }
+
+  // 4. Teks biasa
+  return <span className="break-words [overflow-wrap:anywhere]">{strVal}</span>;
+}
+
 export default function LetterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -236,7 +293,7 @@ export default function LetterDetailPage() {
         </div>
 
         {/* Kanan: Info + Data Isian + Alur */}
-        <div className="space-y-5">
+        <div className="space-y-5 min-w-0">
 
           {/* Informasi Surat */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -277,13 +334,21 @@ export default function LetterDetailPage() {
 
           {/* Data Isian */}
           {letter.data_surat && Object.keys(letter.data_surat).length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-5 overflow-hidden">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Data Isian</h3>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {Object.entries(letter.data_surat).map(([key, val]) => (
-                  <div key={key} className="flex gap-2">
-                    <span className="text-xs text-gray-400 w-28 shrink-0 capitalize">{key.replace(/_/g, ' ')}</span>
-                    <span className="text-xs text-gray-700 flex-1 break-words">{String(val) || '—'}</span>
+                  <div key={key} className="flex gap-2 min-w-0">
+                    <span className="text-xs text-gray-400 w-28 shrink-0 capitalize">
+                      {key === 'tim_nama_json'
+                        ? 'Nama Tim'
+                        : key === 'tim_jabatan_json'
+                        ? 'Jabatan Tim'
+                        : key.replace(/_/g, ' ')}
+                    </span>
+                    <div className="text-xs text-gray-700 flex-1 min-w-0 break-words [overflow-wrap:anywhere]">
+                      {renderDataValue(key, val)}
+                    </div>
                   </div>
                 ))}
               </div>
