@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Loader2, FileText, Tag, Trash2 } from 'lucide-react';
+import { Loader2, FileText, Tag, Trash2, Plus } from 'lucide-react';
 import type { Template } from '../../types';
 import { ErrorAlert } from '~/components/ui';
 
@@ -22,13 +22,21 @@ export function TemplateSelector({
   const navigate = useNavigate();
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleDelete = async () => {
     if (!deleteConfirmId) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await onDelete(deleteConfirmId);
       setDeleteConfirmId(null);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Gagal menghapus template. Silakan coba lagi.';
+      setDeleteError(msg);
     } finally {
       setDeleting(false);
     }
@@ -68,35 +76,37 @@ export function TemplateSelector({
         {templates.map((tpl) => (
           <div
             key={tpl.id}
-            className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-sm transition-shadow"
+            className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-sm transition-shadow flex flex-col justify-between"
           >
-            <div className="h-24 bg-gray-50 border-b border-gray-100 flex items-center justify-center relative">
+            <div className="h-24 bg-gray-50 border-b border-gray-100 flex items-center justify-center relative shrink-0">
               <FileText size={22} className="text-gray-300" />
               <span className="absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-100 text-purple-700">
                 {tpl.jenis_surat}
               </span>
             </div>
-            <div className="p-4">
-              <p className="text-sm font-medium text-gray-800 truncate">{tpl.nama}</p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <Tag size={11} className="text-gray-400" />
-                <span className="text-xs text-gray-400">{tpl.variabel.length} variabel</span>
-              </div>
-              {tpl.variabel.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {tpl.variabel.slice(0, 2).map((v) => (
-                    <span
-                      key={v}
-                      className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono"
-                    >
-                      {`{{${v}}}`}
-                    </span>
-                  ))}
-                  {tpl.variabel.length > 2 && (
-                    <span className="text-[10px] text-gray-400">+{tpl.variabel.length - 2}</span>
-                  )}
+            <div className="p-4 flex flex-col flex-1 justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-800 truncate">{tpl.nama}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Tag size={11} className="text-gray-400" />
+                  <span className="text-xs text-gray-400">{tpl.variabel.length} variabel</span>
                 </div>
-              )}
+                {tpl.variabel.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {tpl.variabel.slice(0, 2).map((v) => (
+                      <span
+                        key={v}
+                        className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono"
+                      >
+                        {`{{${v}}}`}
+                      </span>
+                    ))}
+                    {tpl.variabel.length > 2 && (
+                      <span className="text-[10px] text-gray-400">+{tpl.variabel.length - 2}</span>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-2 mt-3">
                 <button
                   onClick={() => onSelect(tpl)}
@@ -105,7 +115,10 @@ export function TemplateSelector({
                   Gunakan
                 </button>
                 <button
-                  onClick={() => setDeleteConfirmId(tpl.id)}
+                  onClick={() => {
+                    setDeleteConfirmId(tpl.id);
+                    setDeleteError(null);
+                  }}
                   className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                   title="Hapus template"
                 >
@@ -115,6 +128,23 @@ export function TemplateSelector({
             </div>
           </div>
         ))}
+
+        {/* tambah template */}
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard/templates/new')}
+          className="bg-white border-2 border-dashed border-gray-200 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-emerald-400 hover:bg-emerald-50/30 transition-all group min-h-[220px] cursor-pointer"
+        >
+          <div className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-emerald-100 transition-all">
+            <Plus size={20} />
+          </div>
+          <p className="text-sm font-semibold text-gray-700 group-hover:text-emerald-700 transition-colors">
+            Tambah Template
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Unggah file .docx baru
+          </p>
+        </button>
       </div>
 
       {deleteConfirmId !== null && (
@@ -131,13 +161,22 @@ export function TemplateSelector({
                 </p>
               </div>
             </div>
-            <p className="text-xs text-gray-500 mb-5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            <p className="text-xs text-gray-500 mb-4 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
               Tindakan ini tidak dapat dibatalkan. Surat yang sudah dibuat menggunakan template ini tidak terpengaruh.
             </p>
+            {deleteError && (
+              <div className="mb-4 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+                {deleteError}
+              </div>
+            )}
             <div className="flex gap-3">
               <button
-                onClick={() => setDeleteConfirmId(null)}
-                className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  setDeleteConfirmId(null);
+                  setDeleteError(null);
+                }}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Batal
               </button>

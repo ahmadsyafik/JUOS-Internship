@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router';
 import { ChevronLeft, Loader2, Check } from 'lucide-react';
 import { FaCopy } from 'react-icons/fa';
 import { letterService, templateService } from '../../services/api';
-import type { Template } from '../../types';
+import type { Template, Letter } from '../../types';
 import {
   PageShell,
   TemplateSelector,
@@ -39,12 +39,12 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
     forcedJenisSurat
       ? forcedJenisSurat
       : path.includes('/surat-jalan')
-      ? 'SURAT JALAN'
-      : path.includes('/pkwt')
-      ? 'PKWT'
-      : path.includes('/psb')
-      ? 'PSB'
-      : 'MOU';
+        ? 'SURAT JALAN'
+        : path.includes('/pkwt')
+          ? 'PKWT'
+          : path.includes('/psb')
+            ? 'PSB'
+            : 'MOU';
 
   const [step, setStep] = useState<Step>('template');
 
@@ -57,7 +57,7 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
   // Form Data
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [imageFiles, setImageFiles] = useState<Record<string, string>>({});
-  const [id, setId] = useState<number | null>(null);
+  const [existingLetters, setExistingLetters] = useState<Letter[]>([]);
   const [nomorSurat, setNomorSurat] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -107,8 +107,12 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
     setNomorSurat(generateDefaultNomorSurat(jenisSurat, null));
 
     letterService.getAll().then((res) => {
-      const firstId = res.data.data?.[0]?.id;
-      if (firstId != null) setId(firstId);
+      const letters: Letter[] = res.data.data ?? [];
+      setExistingLetters(letters);
+      if (!editingLetterId) {
+        const targetJs = selected?.jenis_surat || jenisSurat;
+        setNomorSurat(generateDefaultNomorSurat(targetJs, letters));
+      }
     });
 
     setTemplates([]);
@@ -141,7 +145,7 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
 
       setSelected(tpl);
       setFormData(Object.fromEntries(tpl.variabel.map((v) => [v, isDateKey(v) ? today : ''])));
-      setNomorSurat(generateDefaultNomorSurat(jenisSurat, id));
+      setNomorSurat(generateDefaultNomorSurat(tpl.jenis_surat || jenisSurat, existingLetters));
       setStep('form');
       return;
     }
@@ -185,7 +189,7 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
         setPdfUrl(null);
         setStep('form');
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [searchParams, templates]);
 
   // Debounced PDF Preview
@@ -239,7 +243,7 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
     });
     setFormData(initial);
     if (!editingLetterId) {
-      setNomorSurat(generateDefaultNomorSurat(jenisSurat, id));
+      setNomorSurat(generateDefaultNomorSurat(tpl.jenis_surat || jenisSurat, existingLetters));
     }
     setCsvMsg(null);
     setCsvFileName('');
@@ -376,8 +380,9 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
     setTemplates((prev) => prev.filter((t) => t.id !== deleteId));
   };
 
+  const activeJenisSurat = (selected?.jenis_surat || jenisSurat).toUpperCase();
   const nomorSuratValue =
-    nomorSurat || `${jenisSurat}/JUOS/${BULAN_ROMAWI[now.getMonth()]}/${now.getFullYear()}/***`;
+    nomorSurat || generateDefaultNomorSurat(activeJenisSurat, existingLetters);
 
   // ====== STEP 1: Pilih Template ======
   if (step === 'template') {
@@ -408,7 +413,7 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
         {/* Kiri: Form Input */}
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-800">Informasi Surat</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Informasi Surat - {selected?.nama} ({selected?.jenis_surat})</h2>
           </div>
 
           <div className="p-6 space-y-5">
@@ -464,14 +469,6 @@ export default function MouTwoPage({ forcedJenisSurat }: { forcedJenisSurat?: st
                   today={today}
                 />
               ))}
-
-            {/* Jenis Surat */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Jenis Surat</label>
-              <div className="px-3 py-2.5 text-sm text-gray-700 border border-gray-200 rounded-lg bg-gray-50">
-                {selected?.jenis_surat}
-              </div>
-            </div>
 
             {/* Alur Persetujuan */}
             <div>

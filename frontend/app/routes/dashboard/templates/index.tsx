@@ -6,13 +6,13 @@ import type { Template } from '../../../types';
 import { Base, ScreenHeader, PageLoader, ErrorAlert, GreenButton } from '~/components/ui';
 
 const JENIS_COLOR: Record<string, string> = {
-  MOU:           'bg-purple-100 text-purple-700',
-  PSB:           'bg-cyan-100 text-cyan-700',
-  KONTRAK:       'bg-cyan-100 text-cyan-700',   // sub-tipe PSB, warna sama
-  BAA:           'bg-cyan-100 text-cyan-700',   // sub-tipe PSB, warna sama
+  MOU: 'bg-purple-100 text-purple-700',
+  PSB: 'bg-cyan-100 text-cyan-700',
+  KONTRAK: 'bg-cyan-100 text-cyan-700',   // sub-tipe PSB, warna sama
+  BAA: 'bg-cyan-100 text-cyan-700',   // sub-tipe PSB, warna sama
   'SURAT JALAN': 'bg-orange-100 text-orange-700',
-  PKWT:          'bg-indigo-100 text-indigo-700',
-  SPK:           'bg-emerald-100 text-emerald-700',
+  PKWT: 'bg-indigo-100 text-indigo-700',
+  SPK: 'bg-emerald-100 text-emerald-700',
 };
 
 function jenisBadge(jenis: string) {
@@ -23,8 +23,8 @@ function jenisBadge(jenis: string) {
 function getLetterRoute(jenisSurat: string): string {
   const js = jenisSurat.toUpperCase();
   if (['PSB', 'KONTRAK', 'BAA'].includes(js)) return '/letters/create/psb';
-  if (js === 'SURAT JALAN')                   return '/letters/create/surat-jalan';
-  if (js === 'PKWT')                          return '/letters/create/pkwt';
+  if (js === 'SURAT JALAN') return '/letters/create/surat-jalan';
+  if (js === 'PKWT') return '/letters/create/pkwt';
   return '/letters/create/mou'; // default MOU dan jenis lain
 }
 
@@ -36,6 +36,7 @@ export default function TemplatesPage() {
   const [error, setError] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     templateService.getAll()
@@ -47,14 +48,19 @@ export default function TemplatesPage() {
   const handleDelete = async () => {
     if (!deleteConfirmId) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await templateService.delete(deleteConfirmId);
       setTemplates((prev) => prev.filter((t) => t.id !== deleteConfirmId));
-    } catch {
-      // silent
+      setDeleteConfirmId(null);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Gagal menghapus template. Silakan coba lagi.';
+      setDeleteError(msg);
     } finally {
       setDeleting(false);
-      setDeleteConfirmId(null);
     }
   };
 
@@ -95,7 +101,7 @@ export default function TemplatesPage() {
               key={tpl.id}
               className="bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-sm transition-shadow"
             >
-              {/* Preview area */}
+              
               <div className="h-28 bg-gray-50 border-b border-gray-100 flex items-center justify-center relative">
                 <FileText size={22} className="text-gray-300" />
                 <span className={`absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-md ${jenisBadge(tpl.jenis_surat)}`}>
@@ -131,17 +137,19 @@ export default function TemplatesPage() {
                   </div>
                 )}
 
-                {/* Actions — Bug 4: hapus edit icon, tambah working delete */}
                 <div className="flex items-center gap-2 mt-3">
                   <button
-  onClick={() => navigate(`${getLetterRoute(tpl.jenis_surat)}?template_id=${tpl.id}`)}
-  className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
->
-  Gunakan
-</button>
-                  {/* Pencil/Edit icon DIHAPUS */}
+                    onClick={() => navigate(`${getLetterRoute(tpl.jenis_surat)}?template_id=${tpl.id}`)}
+                    className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+                  >
+                    Gunakan
+                  </button>
+                  
                   <button
-                    onClick={() => setDeleteConfirmId(tpl.id)}
+                    onClick={() => {
+                      setDeleteConfirmId(tpl.id);
+                      setDeleteError(null);
+                    }}
                     className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                     title="Hapus template"
                   >
@@ -154,41 +162,50 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Konfirmasi hapus */}
-{deleteConfirmId !== null && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-          <Trash2 size={18} className="text-red-500" />
+      {/* konfirm hapus */}
+      {deleteConfirmId !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Hapus Template?</p>
+                <p className="text-xs text-gray-400 mt-0.5">Template dan file DOCX-nya akan dihapus permanen.</p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-4 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              Tindakan ini tidak dapat dibatalkan. Surat yang sudah dibuat menggunakan template ini tidak terpengaruh.
+            </p>
+            {deleteError && (
+              <div className="mb-4 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setDeleteConfirmId(null);
+                  setDeleteError(null);
+                }}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-60"
+              >
+                {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deleting ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-800">Hapus Surat?</p>
-          <p className="text-xs text-gray-400 mt-0.5">File DOCX dan PDF akan dihapus permanen.</p>
-        </div>
-      </div>
-      <p className="text-xs text-gray-500 mb-5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-        Tindakan ini tidak dapat dibatalkan.
-      </p>
-      <div className="flex gap-3">
-        <button
-          onClick={() => setDeleteConfirmId(null)}
-          className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50"
-        >
-          Batal
-        </button>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-60"
-        >
-          {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-          {deleting ? 'Menghapus...' : 'Ya, Hapus'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
     </Base>
   );
 }

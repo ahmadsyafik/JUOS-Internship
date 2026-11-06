@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Eye, CheckCircle, XCircle, Clock, SquarePen, Trash2 } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, Clock, SquarePen, Trash2, Loader2 } from 'lucide-react';
 import { letterService } from '../../services/api';
 import type { Letter } from '../../types';
 import { Base, ScreenHeader } from '~/components/ui';
@@ -30,21 +30,24 @@ export default function IndexLetterPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [deleting, setDeleting]               = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-const handleDeleteLetter = async () => {
-  if (!deleteConfirmId) return;
-  setDeleting(true);
-  try {
-    await letterService.delete(deleteConfirmId);
-    setLetters(prev => prev.filter(l => l.id !== deleteConfirmId));
-    setDeleteConfirmId(null);
-  } catch {
-    setDeleteConfirmId(null);
-  } finally {
-    setDeleting(false);
-  }
-};
+  const handleDeleteLetter = async () => {
+    if (!deleteConfirmId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await letterService.delete(deleteConfirmId);
+      setLetters((prev) => prev.filter((l) => l.id !== deleteConfirmId));
+      setDeleteConfirmId(null);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Gagal menghapus surat.';
+      setDeleteError(msg);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fetchLetters = () => {
     setLoading(true);
@@ -154,13 +157,16 @@ const handleDeleteLetter = async () => {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                   <button
-  onClick={() => setDeleteConfirmId(letter.id)}
-  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-  title="Hapus surat"
->
-  <Trash2 size={14} />
-</button>
+                    <button
+                      onClick={() => {
+                        setDeleteConfirmId(letter.id);
+                        setDeleteError(null);
+                      }}
+                      className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      title="Hapus surat"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                     {letter.status === 'approved' && (
                       <button
                         type="button"
@@ -171,9 +177,13 @@ const handleDeleteLetter = async () => {
                       </button>
                     )}
                     {letter.status === 'rejected' && (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-700">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/letters/${letter.id}`)}
+                        className="inline-flex items-center gap-2 rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-200 transition"
+                      >
                         <XCircle size={16} /> Ditolak
-                      </span>
+                      </button>
                     )}
                     {letter.status === 'pending_approval' && (
                       <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700">
@@ -181,14 +191,66 @@ const handleDeleteLetter = async () => {
                       </span>
                     )}
                     {letter.status === 'revision' && (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/letters/${letter.id}`)}
+                        className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-200 transition"
+                      >
                         <SquarePen size={16} /> Revisi
-                      </span>
+                      </button>
+
                     )}
                   </div>
                 </div>
               </article>
             ))}
+          </div>
+        )}
+
+        {/* Modal Konfirmasi Hapus Surat */}
+        {deleteConfirmId !== null && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <Trash2 size={18} className="text-red-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Hapus Surat?</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Surat dan file DOCX/PDF terkait akan dihapus permanen.
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-4 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                Tindakan ini tidak dapat dibatalkan.
+              </p>
+              {deleteError && (
+                <div className="mb-4 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+                  {deleteError}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setDeleteConfirmId(null);
+                    setDeleteError(null);
+                  }}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleDeleteLetter}
+                  disabled={deleting}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 text-sm bg-red-500 text-white rounded-xl hover:bg-red-600 disabled:opacity-60 transition-colors"
+                >
+                  {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  {deleting ? 'Menghapus...' : 'Ya, Hapus'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
