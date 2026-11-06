@@ -3,7 +3,8 @@
 namespace App\Services\Letter;
 
 use App\Models\Template;
-use PhpOffice\PhpWord\TemplateProcessor;
+use App\Services\Letter\CustomTemplateProcessor;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class DocxGeneratorService
@@ -22,81 +23,103 @@ class DocxGeneratorService
             throw new \RuntimeException("File template tidak ditemukan: {$template->path_docx}");
         }
 
-        $processor = new TemplateProcessor($templatePath);
+        $processor = new CustomTemplateProcessor($templatePath);
         $processor->setMacroChars('{{', '}}'); // ← tambah ini: pakai {{key}} bukan ${key}
 
-// Variabel yang diisi sistem (seperti tanda tangan) dikecualikan dari input user
-$reservedKeys = ['tanda_tangan', 'ttd', 'ttd_direktur', 'signature'];
+        // Variabel yang diisi sistem (seperti tanda tangan) dikecualikan dari input user
+        $reservedKeys = ['tanda_tangan', 'ttd', 'ttd_direktur', 'signature'];
 
-// Handle tim teknis (cloneRow untuk auto-rows tabel SPK)
-if (isset($data['tim_nama_json']) && isset($data['tim_jabatan_json'])) {
-    $namaList    = is_array($data['tim_nama_json']) ? $data['tim_nama_json'] : (json_decode($data['tim_nama_json'], true) ?? []);
-    $jabatanList = is_array($data['tim_jabatan_json']) ? $data['tim_jabatan_json'] : (json_decode($data['tim_jabatan_json'], true) ?? []);
-    $count       = min(count($namaList), count($jabatanList));
+        // Handle tim teknis (cloneRow untuk auto-rows tabel SPK)
+        if (isset($data['tim_nama_json']) && isset($data['tim_jabatan_json'])) {
+            $namaList    = is_array($data['tim_nama_json']) ? $data['tim_nama_json'] : (json_decode($data['tim_nama_json'], true) ?? []);
+            $jabatanList = is_array($data['tim_jabatan_json']) ? $data['tim_jabatan_json'] : (json_decode($data['tim_jabatan_json'], true) ?? []);
+            $count       = min(count($namaList), count($jabatanList));
 
-    if ($count > 0) {
-        try {
-            $processor->cloneRow('nama', $count);
-            for ($i = 1; $i <= $count; $i++) {
-                $processor->setValue("no#{$i}",      (string)$i);              
-                $processor->setValue("nama#{$i}",    $namaList[$i - 1] ?? '');
-                $processor->setValue("jabatan#{$i}", $jabatanList[$i - 1] ?? '');
+            if ($count > 0) {
+                try {
+                    $processor->cloneRow('nama', $count);
+                    for ($i = 1; $i <= $count; $i++) {
+                        $processor->setValue("no#{$i}",      (string)$i);              
+                        $processor->setValue("nama#{$i}",    $namaList[$i - 1] ?? '');
+                        $processor->setValue("jabatan#{$i}", $jabatanList[$i - 1] ?? '');
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('cloneRow failed, fallback to plain value', ['error' => $e->getMessage()]);
+                }
             }
-        } catch (\Exception $e) {
-            Log::warning('cloneRow failed, fallback to plain value', ['error' => $e->getMessage()]);
+            unset($data['tim_nama_json'], $data['tim_jabatan_json'], $data['nama'], $data['jabatan'], $data['no']);
         }
-    }
-    unset($data['tim_nama_json'], $data['tim_jabatan_json'], $data['nama'], $data['jabatan'], $data['no']);
-}
 
-// Handle base64 image fields (_img / _gambar)
-// Decode dan simpan ke file temp, lalu setImageValue ke placeholder di template
-$imageFieldSuffixes = ['_img', '_gambar'];
-foreach ($data as $imgKey => $imgValue) {
-    $isImageField = false;
-    foreach ($imageFieldSuffixes as $suffix) {
-        if (str_ends_with(strtolower($imgKey), $suffix)) {
-            $isImageField = true;
-            break;
+        // Handle base64 image fields (_img / _gambar)
+        // Decode dan simpan ke file temp, lalu setImageValue ke placeholder di template
+        $imageFieldSuffixes = ['_img', '_gambar'];
+        $tempImagePaths = [];
+        foreach ($data as $imgKey => $imgValue) {
+            $isImageField = false;
+            foreach ($imageFieldSuffixes as $suffix) {
+                if (str_ends_with(strtolower($imgKey), $suffix)) {
+                    $isImageField = true;
+                    break;
+                }
+            }
+            if (!$isImageField || empty($imgValue)) continue;
+
+            try {
+                // Support Data URL prefix (data:image/...;base64,...) and detect extension
+                $ext = 'png';
+                if (is_string($imgValue) && preg_match('/^data:image\/(\w+);base64,/', $imgValue, $m)) {
+                    $ext = strtolower($m[1]) === 'jpeg' ? 'jpg' : strtolower($m[1]);
+                    $cleanBase64 = substr($imgValue, strpos($imgValue, ',') + 1);
+                } else {
+                    $cleanBase64 = (string) $imgValue;
+                }
+
+                $binary = base64_decode($cleanBase64, true);
+                if ($binary !== false && strlen($binary) > 0) {
+                    $tmpPath = sys_get_temp_dir() . '/' . uniqid('img_') . '.' . $ext;
+                    file_put_contents($tmpPath, $binary);
+                    $tempImagePaths[] = $tmpPath;
+
+                    $processor->setImageValue($imgKey, [
+                        'path'   => $tmpPath,
+                        'width'  => 400,
+                        'height' => 260,
+                        'ratio'  => true,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning("Image insert failed for {$imgKey}", ['error' => $e->getMessage()]);
+            }
+
+            // Hapus dari data agar tidak diproses setValue (base64 sangat panjang)
+            unset($data[$imgKey]);
         }
-    }
-    if (!$isImageField || empty($imgValue)) continue;
 
-    try {
-        $tmpPath = sys_get_temp_dir() . '/' . uniqid('img_') . '.png';
-        file_put_contents($tmpPath, base64_decode($imgValue));
-
-        $processor->setImageValue($imgKey, [
-            'path'   => $tmpPath,
-            'width'  => 400,
-            'height' => 260,
-            'ratio'  => true,
-        ]);
-    } catch (\Exception $e) {
-        Log::warning("Image insert failed for {$imgKey}", ['error' => $e->getMessage()]);
-    }
-
-    // Hapus dari data agar tidak diproses setValue (base64 sangat panjang)
-    unset($data[$imgKey]);
-}
-
-// setValue semua variabel biasa
-foreach ($data as $key => $value) {
-    if (!in_array(strtolower($key), $reservedKeys)) {
-        try {
-            $processor->setValue($key, $value ?? '');
-        } catch (\Exception $e) {
-            // Skip jika placeholder tidak ada di template
+        // setValue semua variabel biasa
+        foreach ($data as $key => $value) {
+            if (!in_array(strtolower($key), $reservedKeys)) {
+                try {
+                    $processor->setValue($key, $value ?? '');
+                } catch (\Exception $e) {
+                    // Skip jika placeholder tidak ada di template
+                }
+            }
         }
-    }
-}
+
         // Sisipkan TTD direktur jika sudah upload
         $this->insertSignatureIfExists($processor);
 
         // Simpan ke storage
         $outputPath = $this->buildOutputPath();
-        $this->ensureDirectoryExists(dirname(storage_path('app/' . $outputPath)));
+        $this->ensureDirectoryExists(dirname(Storage::disk('public')->path($outputPath)));
         $processor->saveAs(Storage::disk('public')->path($outputPath));
+
+        // Bersihkan temp files
+        foreach ($tempImagePaths as $tmpPath) {
+            if (file_exists($tmpPath)) {
+                @unlink($tmpPath);
+            }
+        }
 
         return $outputPath;
     }
@@ -105,7 +128,7 @@ foreach ($data as $key => $value) {
      * Sisipkan gambar TTD direktur ke placeholder ${tanda_tangan}
      * Jika belum ada TTD, placeholder dibiarkan kosong
      */
-    private function insertSignatureIfExists(TemplateProcessor $processor): void
+    private function insertSignatureIfExists(CustomTemplateProcessor $processor): void
     {
         $direktur = \App\Models\User::where('role', 'direktur')
             ->whereNotNull('signature_path')
@@ -114,7 +137,7 @@ foreach ($data as $key => $value) {
         if (!$direktur)
             return;
 
-        $signaturePath = storage_path('app/' . $direktur->signature_path);
+        $signaturePath = Storage::disk('public')->path($direktur->signature_path);
 
         if (!file_exists($signaturePath))
             return;

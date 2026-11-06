@@ -271,7 +271,24 @@ public function destroy(Letter $letter): JsonResponse
             if (!file_exists($fullPath)) {
                 return response()->json(['success' => false, 'message' => 'File DOCX tidak ditemukan.'], 404);
             }
-            return response()->download($fullPath, ($letter->nomor_surat ?? 'surat') . '.docx');
+
+            // Quick auto-heal if legacy VML <w:pict> remains
+            try {
+                $zip = new \ZipArchive();
+                if ($zip->open($fullPath) === true) {
+                    $xml = $zip->getFromName('word/document.xml');
+                    $zip->close();
+                    if ($xml && str_contains($xml, '<w:pict>')) {
+                        $proc = new \App\Services\Letter\CustomTemplateProcessor($fullPath);
+                        $proc->saveAs($fullPath);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Auto-heal DOCX export failed', ['error' => $e->getMessage()]);
+            }
+
+            $safeFilename = str_replace(['/', '\\'], '_', $letter->nomor_surat ?? 'surat') . '.docx';
+            return response()->download($fullPath, $safeFilename);
         }
 
         // PDF export
@@ -294,7 +311,8 @@ public function destroy(Letter $letter): JsonResponse
             return response()->json(['success' => false, 'message' => 'File PDF tidak ditemukan.'], 404);
         }
 
-        return response()->download($fullPath, ($letter->nomor_surat ?? 'surat') . '.pdf', [
+        $safeFilename = str_replace(['/', '\\'], '_', $letter->nomor_surat ?? 'surat') . '.pdf';
+        return response()->download($fullPath, $safeFilename, [
             'Content-Type' => 'application/pdf',
         ]);
     }

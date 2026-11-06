@@ -5,6 +5,7 @@ namespace App\Services\Letter;
 use App\Models\Approval;
 use App\Models\Letter;
 use App\Models\User;
+use App\Services\Letter\CustomTemplateProcessor;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\TemplateProcessor;
 
@@ -27,7 +28,7 @@ class ApproveLetterService
             $docxPath      = Storage::disk('public')->path($letter->path_docx);
 
             if (file_exists($signaturePath) && file_exists($docxPath)) {
-                $processor = new TemplateProcessor($docxPath);
+                $processor = new CustomTemplateProcessor($docxPath);
                 $processor->setMacroChars('{{', '}}');
 
                 $processor->setImageValue('tanda_tangan', [
