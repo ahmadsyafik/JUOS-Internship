@@ -292,17 +292,29 @@ class TemplateController extends Controller
      */
     public function destroy(Template $template): JsonResponse
     {
-        // Hapus file DOCX dari storage
-        if ($template->path_docx) {
-            Storage::disk('public')->delete($template->path_docx);
+        try {
+            // Hapus file DOCX dari storage jika ada
+            if ($template->path_docx && Storage::disk('public')->exists($template->path_docx)) {
+                Storage::disk('public')->delete($template->path_docx);
+            }
+
+            $template->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Template berhasil dihapus.',
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Delete template failed', [
+                'template_id' => $template->id,
+                'message'     => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus template. Silakan coba lagi.',
+            ], 500);
         }
-
-        $template->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Template berhasil dihapus.',
-        ]);
     }
 
 }

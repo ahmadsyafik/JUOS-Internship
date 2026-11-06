@@ -186,8 +186,8 @@ public function destroy(Letter $letter): JsonResponse
         return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
     }
 
-    // Hanya pembuat atau direktur yang bisa hapus
-    if ($letter->created_by !== $user->id && $user->role !== 'direktur') {
+    // Hanya pembuat, direktur, atau admin yang bisa hapus
+    if ($letter->created_by !== $user->id && !in_array($user->role, ['direktur', 'admin'])) {
         return response()->json(['success' => false, 'message' => 'Tidak memiliki izin menghapus surat ini.'], 403);
     }
 
