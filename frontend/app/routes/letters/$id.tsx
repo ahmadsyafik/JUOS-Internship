@@ -145,9 +145,10 @@ export default function LetterDetailPage() {
       setExportError('File DOCX tidak tersedia.');
       return;
     }
+    const safeNomor = (letter.nomor_surat ?? 'surat').replace(/[\/\\]/g, '_');
     const a = document.createElement('a');
     a.href = `/storage/${letter.path_docx}`;
-    a.download = `${letter.nomor_surat ?? 'surat'}.docx`;
+    a.download = `${safeNomor}.docx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -219,12 +220,12 @@ export default function LetterDetailPage() {
             </button>
           )}
 
-          <button
+          {/* <button
             onClick={() => window.print()}
             className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors"
           >
             <Printer size={14} /> Cetak
-          </button>
+          </button> */}
 
           {/* Bug 3 fix: PDF — buka pdf-view di tab baru (auto-convert, no auth) */}
           <button
